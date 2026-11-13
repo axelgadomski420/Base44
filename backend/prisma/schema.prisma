@@ -1,0 +1,265 @@
+// PURRE PETS â Prisma schema (PostgreSQL)
+// Field names intentionally keep the Base44 naming (snake_case, created_date / updated_date,
+// created_by_id) so the frontend keeps working with the same payload shapes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password_hash  String
+  full_name      String?
+  role           String   @default("user") // "user" | "admin"
+  email_verified Boolean  @default(false)
+  created_date   DateTime @default(now())
+  updated_date   DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Profile {
+  id            String   @id @default(cuid())
+  user_id       String
+  account_type  String   @default("enthusiast") // "breeder" | "enthusiast"
+  display_name  String
+  handle        String?
+  kennel_name   String?
+  bio           String?
+  city          String?
+  lat           Float?
+  lng           Float?
+  avatar_url    String?
+  cover_url     String?
+  species       String[] @default([])
+  breeds        String[] @default([])
+  followers     Int      @default(0)
+  verified      Boolean  @default(false)
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([followers])
+  @@map("profiles")
+}
+
+model Listing {
+  id              String    @id @default(cuid())
+  kind            String    @default("sale") // "sale" | "adoption"
+  title           String
+  description     String?
+  price           Float?
+  species         String? // "dog" | "cat"
+  breed           String?
+  age_months      Int?
+  sex             String? // "male" | "female"
+  city            String
+  lat             Float?
+  lng             Float?
+  image_urls      String[]  @default([])
+  seller_id       String?
+  seller_name     String?
+  seller_verified Boolean   @default(false)
+  status          String    @default("active") // "active" | "review" | "sold" | "archived"
+  boosted_until   DateTime?
+  risk            Float     @default(0)
+  moderation_note String?
+  created_by_id   String?
+  created_date    DateTime  @default(now())
+  updated_date    DateTime  @updatedAt
+
+  @@index([seller_id])
+  @@index([status])
+  @@index([city])
+  @@map("listings")
+}
+
+model Pet {
+  id            String    @id @default(cuid())
+  owner_id      String?
+  owner_name    String?
+  name          String
+  species       String? // "dog" | "cat"
+  breed         String?
+  birth_date    DateTime?
+  color         String?
+  bio           String?
+  photos        String[]  @default([])
+  pedigree      Boolean   @default(false)
+  city          String?
+  created_by_id String?
+  created_date  DateTime  @default(now())
+  updated_date  DateTime  @updatedAt
+
+  @@index([owner_id])
+  @@map("pets")
+}
+
+model Post {
+  id              String   @id @default(cuid())
+  author_id       String?
+  author_name     String?
+  author_handle   String?
+  author_avatar   String?
+  author_verified Boolean  @default(false)
+  city            String?
+  breed           String?
+  caption         String
+  image_url       String?
+  video_url       String?
+  tags            String[] @default([])
+  likes           Int      @default(0)
+  comment_count   Int      @default(0)
+  status          String   @default("published") // "published" | "review" | "hidden"
+  risk            Float    @default(0)
+  created_by_id   String?
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  @@index([author_id])
+  @@index([status])
+  @@map("posts")
+}
+
+model Comment {
+  id            String   @id @default(cuid())
+  post_id       String
+  author_id     String?
+  author_name   String?
+  author_avatar String?
+  content       String
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@index([post_id])
+  @@map("comments")
+}
+
+model Like {
+  id            String   @id @default(cuid())
+  post_id       String
+  user_id       String
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@unique([post_id, user_id])
+  @@index([post_id])
+  @@map("likes")
+}
+
+model Follow {
+  id             String   @id @default(cuid())
+  follower_id    String?
+  following_id   String
+  following_name String?
+  created_by_id  String?
+  created_date   DateTime @default(now())
+  updated_date   DateTime @updatedAt
+
+  @@unique([follower_id, following_id])
+  @@index([follower_id])
+  @@index([following_id])
+  @@map("follows")
+}
+
+model Conversation {
+  id              String    @id @default(cuid())
+  members         String[]  @default([])
+  member_names    String[]  @default([])
+  listing_id      String?
+  listing_title   String?
+  last_message    String?
+  last_sender_id  String?
+  last_message_at DateTime?
+  unread          Int       @default(0)
+  created_by_id   String?
+  created_date    DateTime  @default(now())
+  updated_date    DateTime  @updatedAt
+
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(cuid())
+  conversation_id String
+  members         String[] @default([])
+  sender_id       String?
+  sender_name     String?
+  content         String
+  seen            Boolean  @default(false)
+  created_by_id   String?
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  @@index([conversation_id, created_date])
+  @@map("messages")
+}
+
+model Wallet {
+  id            String    @id @default(cuid())
+  user_id       String    @unique
+  coins         Int       @default(0)
+  xp            Int       @default(0)
+  level         Int       @default(1)
+  frame         String?
+  badges        String[]  @default([])
+  boost_until   DateTime?
+  extra_media   Int       @default(0)
+  daily_done_on String?
+  created_date  DateTime  @default(now())
+  updated_date  DateTime  @updatedAt
+
+  @@map("wallets")
+}
+
+model Redemption {
+  id           String   @id @default(cuid())
+  user_id      String
+  reward_key   String
+  reward_label String?
+  cost         Int
+  status       String   @default("applied") // "applied" | "pending"
+  target_id    String?
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  @@index([user_id])
+  @@map("redemptions")
+}
+
+model GameScore {
+  id           String   @id @default(cuid())
+  user_id      String?
+  user_name    String?
+  game         String // "2048" | "memory" | "quiz" | "puzzle"
+  score        Int
+  coins_earned Int      @default(0)
+  duration_ms  Int?
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  @@index([score])
+  @@index([user_id, game])
+  @@map("game_scores")
+}
+
+model OtpCode {
+  id           String   @id @default(cuid())
+  email        String
+  code_hash    String
+  expires_at   DateTime
+  used         Boolean  @default(false)
+  created_date DateTime @default(now())
+
+  @@index([email])
+  @@map("otp_codes")
+}
