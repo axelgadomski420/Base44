@@ -1,0 +1,114 @@
+{
+  "name": "Profile",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "account_type": {
+      "type": "string",
+      "enum": [
+        "breeder",
+        "enthusiast"
+      ],
+      "enumColors": [
+        "purple",
+        "blue"
+      ],
+      "default": "enthusiast"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "handle": {
+      "type": "string"
+    },
+    "kennel_name": {
+      "type": "string"
+    },
+    "bio": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string"
+    },
+    "lat": {
+      "type": "number"
+    },
+    "lng": {
+      "type": "number"
+    },
+    "avatar_url": {
+      "type": "string"
+    },
+    "cover_url": {
+      "type": "string"
+    },
+    "species": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "breeds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "followers": {
+      "type": "number",
+      "rls": {
+        "update": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "verified": {
+      "type": "boolean",
+      "rls": {
+        "update": {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "user_id",
+    "display_name"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
