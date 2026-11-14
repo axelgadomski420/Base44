@@ -1,11 +1,25 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Coins, RotateCcw, Trophy } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { useAds } from "@/hooks/useAds";
+import { AdInterstitial } from "@/components/ads/AdSlot";
 
 export default function GameShell({ title, score, meta, onRestart, result, submitting, error, children }) {
   const navigate = useNavigate();
   const { t } = useI18n();
+  const { adsEnabled, randomAd } = useAds();
   const finished = !!result || !!error;
+  const [ad, setAd] = useState(null);
+  const [adClosed, setAdClosed] = useState(false);
+
+  useEffect(() => {
+    if (finished && !submitting && adsEnabled && !adClosed) {
+      setAd(randomAd());
+    }
+  }, [finished, submitting, adsEnabled, adClosed, randomAd]);
+
+  const showAd = finished && !submitting && adsEnabled && ad && !adClosed;
 
   return (
     <div className="px-4 pb-10 pt-4 lg:px-8">
@@ -73,6 +87,14 @@ export default function GameShell({ title, score, meta, onRestart, result, submi
           </div>
         )}
       </div>
+
+      {showAd && (
+        <AdInterstitial
+          ad={ad}
+          onClose={() => setAdClosed(true)}
+          onContinue={() => setAdClosed(true)}
+        />
+      )}
     </div>
   );
 }
