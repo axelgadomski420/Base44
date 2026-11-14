@@ -20,8 +20,16 @@ import { ApiError } from '../../core/api.service';
       <label class="block text-sm">{{ i18n.t('auth.password') }}
         <input class="purre-input mt-1" type="password" name="password" [(ngModel)]="password" required>
       </label>
+      @if (need2fa()) {
+        <label class="block text-sm">🔐 Kod 2FA z aplikacji uwierzytelniającej
+          <input class="purre-input mt-1" name="totpCode" [(ngModel)]="totpCode" inputmode="numeric"
+                 maxlength="6" placeholder="000000" required>
+        </label>
+      }
       @if (error()) { <p class="purre-error">{{ error() }}</p> }
-      <button class="purre-btn w-full" [disabled]="busy()">{{ i18n.t('auth.login') }}</button>
+      <button class="purre-btn w-full" [disabled]="busy()">
+        {{ need2fa() ? 'Zaloguj z kodem 2FA' : i18n.t('auth.login') }}
+      </button>
       <p class="text-sm purre-muted">{{ i18n.t('auth.noAccount') }}
         <a routerLink="/register" class="underline" style="color: var(--accent)">{{ i18n.t('auth.register') }}</a>
       </p>
@@ -30,17 +38,23 @@ import { ApiError } from '../../core/api.service';
   `
 })
 export class LoginPage {
-  email = ''; password = '';
+  email = ''; password = ''; totpCode = '';
   readonly busy = signal(false);
   readonly error = signal('');
+  readonly need2fa = signal(false);
 
   constructor(private auth: AuthService, private router: Router, readonly i18n: I18nService) {}
 
   async submit(): Promise<void> {
     this.busy.set(true); this.error.set('');
     try {
-      const user = await this.auth.login(this.email, this.password);
-      this.router.navigate([user.role === 'ADMIN' ? '/admin/verifications' : '/discover']);
+      const result = await this.auth.login(this.email, this.password, this.need2fa() ? this.totpCode : undefined);
+      if ('require2fa' in result) {
+        this.need2fa.set(true);
+        this.error.set('Podaj kod 2FA z aplikacji uwierzytelniającej.');
+        return;
+      }
+      this.router.navigate([result.user.role === 'ADMIN' ? '/admin/verifications' : '/discover']);
     } catch (e) {
       this.error.set(e instanceof ApiError ? e.message : 'Błąd logowania.');
     } finally {

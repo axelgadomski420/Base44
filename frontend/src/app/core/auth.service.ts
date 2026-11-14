@@ -18,7 +18,8 @@ export interface PurreUser {
   premiumUntil?: string;
 }
 
-interface AuthResponse { accessToken: string; user: PurreUser; }
+export type LoginResult = { user: PurreUser } | { require2fa: true };
+interface AuthResponse { accessToken: string; refreshToken: string; user: PurreUser | null; require2fa: boolean; }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -36,24 +37,49 @@ export class AuthService {
     if (!this.isAuthenticated()) { this.loaded.set(true); return; }
     this.api.get<PurreUser>('/auth/me').subscribe({
       next: (user) => { this.user.set(user); this.loaded.set(true); },
-      error: () => { this.logout(); }
+      error: () => {
+        // access token wygasł — spróbuj odświeżyć sesję, potem jeszcze raz /me
+        this.tryRefresh().then(ok => {
+          if (!ok) { this.clearTokens(); this.user.set(null); this.loaded.set(true); return; }
+          this.api.get<PurreUser>('/auth/me').subscribe({
+            next: (user) => { this.user.set(user); this.loaded.set(true); },
+            error: () => { this.clearTokens(); this.user.set(null); this.loaded.set(true); }
+          });
+        });
+      }
     });
   }
 
   register(data: Record<string, unknown>): Promise<PurreUser> {
     return new Promise((resolve, reject) => {
       this.api.post<AuthResponse>('/auth/register', data).subscribe({
-        next: (res) => { this.apply(res); resolve(res.user); },
+        next: (res) => { this.apply(res); resolve(res.user!); },
         error: reject
       });
     });
   }
 
-  login(email: string, password: string): Promise<PurreUser> {
+  login(email: string, password: string, totpCode?: string): Promise<LoginResult> {
     return new Promise((resolve, reject) => {
-      this.api.post<AuthResponse>('/auth/login', { email, password }).subscribe({
-        next: (res) => { this.apply(res); resolve(res.user); },
+      this.api.post<AuthResponse>('/auth/login', { email, password, totpCode }).subscribe({
+        next: (res) => {
+          if (res.require2fa) { resolve({ require2fa: true }); return; }
+          this.apply(res);
+          resolve({ user: res.user! });
+        },
         error: reject
+      });
+    });
+  }
+
+  /** Odświeżenie sesji (rotacja refresh tokenu). */
+  tryRefresh(): Promise<boolean> {
+    const refreshToken = localStorage.getItem('purre_refresh');
+    if (!refreshToken) return Promise.resolve(false);
+    return new Promise(resolve => {
+      this.api.post<AuthResponse>('/auth/refresh', { refreshToken }).subscribe({
+        next: (res) => { this.apply(res); resolve(true); },
+        error: () => resolve(false)
       });
     });
   }
@@ -64,14 +90,24 @@ export class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem('purre_token');
+    const refreshToken = localStorage.getItem('purre_refresh');
+    if (refreshToken) {
+      this.api.post('/auth/logout', { refreshToken }).subscribe({ error: () => undefined });
+    }
+    this.clearTokens();
     this.user.set(null);
     this.router.navigate(['/login']);
   }
 
   private apply(res: AuthResponse): void {
-    localStorage.setItem('purre_token', res.accessToken);
-    this.user.set(res.user);
+    if (res.accessToken) localStorage.setItem('purre_token', res.accessToken);
+    if (res.refreshToken) localStorage.setItem('purre_refresh', res.refreshToken);
+    if (res.user) this.user.set(res.user);
     this.loaded.set(true);
+  }
+
+  private clearTokens(): void {
+    localStorage.removeItem('purre_token');
+    localStorage.removeItem('purre_refresh');
   }
 }

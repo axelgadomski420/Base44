@@ -8,6 +8,7 @@ import { I18nService } from '../../core/i18n.service';
 
 interface ListingDto { id: number; title: string; status: string; price?: number; }
 interface PremiumStatus { active: boolean; premiumUntil?: string; balance: number; priceCoins: number; }
+interface SessionDto { id: number; userAgent?: string; ip?: string; createdAt: string; lastUsedAt: string; }
 
 @Component({
   selector: 'purre-profile',
@@ -39,6 +40,7 @@ interface PremiumStatus { active: boolean; premiumUntil?: string; balance: numbe
           <span class="purre-badge">{{ roleLabel() }}</span>
           @if (auth.user()?.verifiedBadge) { <span class="purre-badge">✅ Zweryfikowany hodowca</span> }
           @if (premium()?.active) { <span class="purre-badge">👑 Premium</span> }
+          @if (totpEnabled()) { <span class="purre-badge">🔐 2FA</span> }
         </div>
       </div>
     </div>
@@ -101,6 +103,46 @@ interface PremiumStatus { active: boolean; premiumUntil?: string; balance: numbe
       @if (pwdMsg()) { <p class="text-sm" style="color: var(--accent-2)">{{ pwdMsg() }}</p> }
     </section>
 
+    <!-- Bezpieczeństwo: 2FA + sesje -->
+    <section class="purre-card p-5 space-y-3">
+      <h2 class="font-bold">🔐 Bezpieczeństwo</h2>
+
+      @if (!totpEnabled()) {
+        @if (!setup()) {
+          <p class="text-sm purre-muted">Dwuetapowa weryfikacja (TOTP) chroni Twoje konto.</p>
+          <button class="purre-btn w-full" (click)="start2fa()">Włącz 2FA</button>
+        } @else {
+          <p class="text-sm">1. Dodaj konto w aplikacji (Google Authenticator, Aegis, Authy):</p>
+          <p class="text-sm font-mono break-all purre-badge">{{ setup()!.secret }}</p>
+          <a [href]="setup()!.otpauthUri" class="text-sm underline" style="color: var(--accent)">Otwórz w aplikacji (otpauth://)</a>
+          <p class="text-sm">2. Wpisz kod z aplikacji:</p>
+          <input class="purre-input" [(ngModel)]="totpSetupCode" name="totpSetupCode" maxlength="6" inputmode="numeric" placeholder="000000">
+          <button class="purre-btn w-full" [disabled]="saving2fa()" (click)="confirm2fa()">
+            {{ saving2fa() ? 'Zapisywanie…' : 'Aktywuj 2FA' }}
+          </button>
+        }
+      } @else {
+        <p class="text-sm">✅ 2FA aktywne. Aby wyłączyć, podaj kod:</p>
+        <input class="purre-input" [(ngModel)]="totpDisableCode" name="totpDisableCode" maxlength="6" inputmode="numeric" placeholder="000000">
+        <button class="purre-btn w-full" [disabled]="saving2fa()" (click)="disable2fa()">
+          {{ saving2fa() ? 'Zapisywanie…' : 'Wyłącz 2FA' }}
+        </button>
+      }
+      @if (msg2fa()) { <p class="text-sm" style="color: var(--accent-2)">{{ msg2fa() }}</p> }
+
+      <h3 class="font-bold pt-2">Aktywne sesje</h3>
+      @for (s of sessions(); track s.id) {
+        <div class="purre-card p-3 flex justify-between items-center text-xs">
+          <div class="min-w-0">
+            <p class="truncate">{{ s.userAgent || 'Nieznane urządzenie' }}</p>
+            <p class="purre-muted">{{ s.ip }} · {{ s.lastUsedAt | date:'short' }}</p>
+          </div>
+          <button class="purre-badge" (click)="revokeSession(s.id)">Wyloguj</button>
+        </div>
+      } @empty { <p class="purre-muted text-sm">—</p> }
+      <button class="purre-btn w-full" (click)="revokeOthers()">🚪 Wyloguj inne urządzenia</button>
+    </section>
+
     <!-- Wygląd -->
     <section class="purre-card p-5 space-y-3">
       <h2 class="font-bold">Wygląd</h2>
@@ -126,6 +168,7 @@ interface PremiumStatus { active: boolean; premiumUntil?: string; balance: numbe
       <a routerLink="/moderation" class="purre-card p-4 block">🚩 Panel moderatora — zgłoszenia</a>
     }
     <a routerLink="/wallet" class="purre-card p-4 block">🪙 PURRE Coins — portfel</a>
+    <a routerLink="/video-editor" class="purre-card p-4 block">🎬 Edytor wideo (trim, tempo, muzyka)</a>
     @if (isBreeder() && !auth.user()?.verifiedBadge) {
       <a routerLink="/verification" class="purre-card p-4 block">📋 Weryfikacja hodowli</a>
     }
@@ -166,6 +209,14 @@ export class ProfilePage implements OnInit {
   readonly uploadingAvatar = signal(false);
   readonly buyingPremium = signal(false);
 
+  readonly totpEnabled = signal(false);
+  readonly setup = signal<{ secret: string; otpauthUri: string } | null>(null);
+  readonly saving2fa = signal(false);
+  readonly msg2fa = signal('');
+  readonly sessions = signal<SessionDto[]>([]);
+  totpSetupCode = '';
+  totpDisableCode = '';
+
   form = { displayName: '', bio: '', city: '', region: '', website: '', instagram: '' };
   pwd = { currentPassword: '', newPassword: '' };
 
@@ -190,6 +241,60 @@ export class ProfilePage implements OnInit {
     }
     this.api.get<PremiumStatus>('/premium/status').subscribe({
       next: (p) => this.premium.set(p), error: () => this.premium.set(null)
+    });
+    this.api.get<{ enabled: boolean }>('/auth/2fa/status').subscribe({
+      next: (s) => this.totpEnabled.set(s.enabled), error: () => this.totpEnabled.set(false)
+    });
+    this.loadSessions();
+  }
+
+  loadSessions(): void {
+    this.api.get<SessionDto[]>('/auth/sessions').subscribe({
+      next: (s) => this.sessions.set(s), error: () => this.sessions.set([])
+    });
+  }
+
+  start2fa(): void {
+    this.saving2fa.set(true); this.msg2fa.set('');
+    this.api.post<{ secret: string; otpauthUri: string }>('/auth/2fa/setup', {}).subscribe({
+      next: (res) => { this.setup.set(res); this.saving2fa.set(false); },
+      error: (e) => { this.saving2fa.set(false); this.msg2fa.set(e instanceof ApiError ? e.message : 'Nie udało się rozpocząć konfiguracji.'); }
+    });
+  }
+
+  confirm2fa(): void {
+    if (!/\d{6}/.test(this.totpSetupCode)) { this.msg2fa.set('Kod musi mieć 6 cyfr.'); return; }
+    this.saving2fa.set(true);
+    this.api.post('/auth/2fa/enable', { code: this.totpSetupCode }).subscribe({
+      next: () => {
+        this.totpEnabled.set(true); this.setup.set(null); this.totpSetupCode = '';
+        this.saving2fa.set(false); this.msg2fa.set('✅ 2FA aktywne.');
+      },
+      error: (e) => { this.saving2fa.set(false); this.msg2fa.set(e instanceof ApiError ? e.message : 'Nie udało się aktywować 2FA.'); }
+    });
+  }
+
+  disable2fa(): void {
+    if (!/\d{6}/.test(this.totpDisableCode)) { this.msg2fa.set('Kod musi mieć 6 cyfr.'); return; }
+    this.saving2fa.set(true);
+    this.api.post('/auth/2fa/disable', { code: this.totpDisableCode }).subscribe({
+      next: () => {
+        this.totpEnabled.set(false); this.totpDisableCode = '';
+        this.saving2fa.set(false); this.msg2fa.set('2FA wyłączone.');
+      },
+      error: (e) => { this.saving2fa.set(false); this.msg2fa.set(e instanceof ApiError ? e.message : 'Nie udało się wyłączyć 2FA.'); }
+    });
+  }
+
+  revokeSession(id: number): void {
+    this.api.delete('/auth/sessions/' + id).subscribe({ next: () => this.loadSessions() });
+  }
+
+  revokeOthers(): void {
+    const refreshToken = localStorage.getItem('purre_refresh');
+    if (!refreshToken) { this.msg2fa.set('Brak aktywnej sesji.'); return; }
+    this.api.post('/auth/sessions/revoke-others', { refreshToken }).subscribe({
+      next: () => { this.loadSessions(); this.msg2fa.set('Wylogowano inne urządzenia.'); }
     });
   }
 
