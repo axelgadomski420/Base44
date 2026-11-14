@@ -1,4 +1,4 @@
-// PURRE PETS â Prisma schema (PostgreSQL)
+// PURRE PETS — Prisma schema (PostgreSQL)
 // Field names intentionally keep the Base44 naming (snake_case, created_date / updated_date,
 // created_by_id) so the frontend keeps working with the same payload shapes.
 
@@ -12,14 +12,16 @@ datasource db {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
+  id             String    @id @default(cuid())
+  email          String    @unique
   password_hash  String
   full_name      String?
-  role           String   @default("user") // "user" | "admin"
-  email_verified Boolean  @default(false)
-  created_date   DateTime @default(now())
-  updated_date   DateTime @updatedAt
+  role           String    @default("user") // "user" | "moderator" | "admin"
+  email_verified Boolean   @default(false)
+  banned         Boolean   @default(false)
+  premium_until  DateTime? // aktywny dostęp PREMIUM (bez reklam)
+  created_date   DateTime  @default(now())
+  updated_date   DateTime  @updatedAt
 
   @@map("users")
 }
@@ -64,6 +66,7 @@ model Listing {
   lat             Float?
   lng             Float?
   image_urls      String[]  @default([])
+  video_urls      String[]  @default([])
   seller_id       String?
   seller_name     String?
   seller_verified Boolean   @default(false)
@@ -113,7 +116,9 @@ model Post {
   breed           String?
   caption         String
   image_url       String?
+  image_urls      String[] @default([])
   video_url       String?
+  group_id        String? // post w grupie (jak na Facebooku)
   tags            String[] @default([])
   likes           Int      @default(0)
   comment_count   Int      @default(0)
@@ -125,6 +130,7 @@ model Post {
 
   @@index([author_id])
   @@index([status])
+  @@index([group_id])
   @@map("posts")
 }
 
@@ -135,6 +141,7 @@ model Comment {
   author_name   String?
   author_avatar String?
   content       String
+  status        String   @default("published") // "published" | "hidden"
   created_by_id String?
   created_date  DateTime @default(now())
   updated_date  DateTime @updatedAt
@@ -189,19 +196,36 @@ model Conversation {
 }
 
 model Message {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   conversation_id String
-  members         String[] @default([])
+  members         String[]  @default([])
   sender_id       String?
   sender_name     String?
   content         String
-  seen            Boolean  @default(false)
+  media_url       String?   // zdjęcie / wideo w wiadomości
+  media_type      String?   // "image" | "video"
+  seen            Boolean   @default(false)
+  delivered_at    DateTime?
+  read_at         DateTime?
+  deleted         Boolean   @default(false)
   created_by_id   String?
-  created_date    DateTime @default(now())
-  updated_date    DateTime @updatedAt
+  created_date    DateTime  @default(now())
+  updated_date    DateTime  @updatedAt
 
   @@index([conversation_id, created_date])
   @@map("messages")
+}
+
+model MessageReaction {
+  id         String   @id @default(cuid())
+  message_id String
+  user_id    String
+  emoji      String
+  created_date DateTime @default(now())
+
+  @@unique([message_id, user_id])
+  @@index([message_id])
+  @@map("message_reactions")
 }
 
 model Wallet {
@@ -298,8 +322,10 @@ model Group {
   type          String   @default("topic") // "breed" | "regional" | "topic"
   city          String?
   breed         String?
-  members_count Int      @default(1)
+  cover_url     String?
+  rules         String?
   is_public     Boolean  @default(true)
+  members_count Int      @default(1)
   created_by_id String?
   created_date  DateTime @default(now())
   updated_date  DateTime @updatedAt
@@ -309,12 +335,13 @@ model Group {
 }
 
 model GroupMember {
-  id            String   @id @default(cuid())
-  group_id      String
-  user_id       String
+  id         String   @id @default(cuid())
+  group_id   String
+  user_id    String
+  role       String   @default("member") // "member" | "admin"
   created_by_id String?
-  created_date  DateTime @default(now())
-  updated_date  DateTime @updatedAt
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
 
   @@unique([group_id, user_id])
   @@index([user_id])
@@ -322,19 +349,23 @@ model GroupMember {
 }
 
 model VerificationRequest {
-  id            String   @id @default(cuid())
-  user_id       String
-  kennel_name   String
-  registry_no   String?
-  city          String?
-  species       String?
-  document_url  String?
-  note          String?
-  status        String   @default("pending") // "pending" | "approved" | "rejected"
-  reviewer_note String?
-  created_by_id String?
-  created_date  DateTime @default(now())
-  updated_date  DateTime @updatedAt
+  id                String    @id @default(cuid())
+  user_id           String
+  kennel_name       String
+  registry_no       String?
+  city              String?
+  species           String?
+  document_url      String?
+  note              String?
+  status            String    @default("pending") // "pending" | "approved" | "rejected"
+  reviewer_note     String?
+  ai_recommendation String?   // "approve" | "reject" | "manual"
+  ai_score          Float?
+  ai_reasoning      String?
+  ai_analyzed_at    DateTime?
+  created_by_id     String?
+  created_date      DateTime  @default(now())
+  updated_date      DateTime  @updatedAt
 
   @@index([status])
   @@index([user_id])
@@ -367,4 +398,54 @@ model OtpCode {
 
   @@index([email])
   @@map("otp_codes")
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  user_id    String
+  type       String // "like" | "comment" | "follow" | "message" | "system" | "verification" | "group" | "moderation"
+  title      String
+  body       String?
+  link       String?
+  actor_name String?
+  actor_avatar String?
+  read       Boolean  @default(false)
+  created_by_id String?
+  created_date DateTime @default(now())
+
+  @@index([user_id, read])
+  @@map("notifications")
+}
+
+model ReelAudio {
+  id         String   @id @default(cuid())
+  title      String
+  artist     String?
+  url        String
+  duration   Int? // sekundy
+  mood       String?
+  source     String   @default("library") // "library" | "upload"
+  usage_count Int     @default(0)
+  created_by_id String?
+  created_date DateTime @default(now())
+
+  @@index([title])
+  @@map("reel_audios")
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  reporter_id  String?
+  reporter_name String?
+  target_type  String // "post" | "comment" | "listing" | "user" | "message"
+  target_id    String
+  reason       String
+  details      String?
+  status       String   @default("open") // "open" | "resolved" | "dismissed"
+  resolution   String?
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  @@index([status])
+  @@map("reports")
 }

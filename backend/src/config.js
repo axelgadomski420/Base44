@@ -22,7 +22,11 @@ export const config = {
     "https://www.purrepets.pl"
   ],
   uploadDir: process.env.UPLOAD_DIR ?? "/var/www/purrepets/uploads",
-  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 26214400),
+  // 100 MB — musi się zgadzać z client_max_body_size w nginx (100m).
+  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 104857600),
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  ollamaUrl: process.env.OLLAMA_URL ?? "http://127.0.0.1:11434",
+  ollamaModel: process.env.OLLAMA_MODEL ?? "speakleash/bielik-7b-instruct-v0.1:Q4_K_M",
+  adminEmails: (process.env.ADMIN_EMAILS ?? "effdoa@gmail.com").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
 };

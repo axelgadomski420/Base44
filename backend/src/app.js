@@ -12,7 +12,14 @@ import { rewardsRouter } from "./routes/rewards.routes.js";
 import { listingsRouter } from "./routes/listings.routes.js";
 import { assistantRouter } from "./routes/assistant.routes.js";
 import { stripeRouter } from "./routes/stripe.routes.js";
-import { socialRouter, adminRouter } from "./routes/social.routes.js";
+import { socialRouter } from "./routes/social.routes.js";
+import { adminRouter } from "./routes/admin.routes.js";
+import { notificationsRouter } from "./routes/notifications.routes.js";
+import { groupsRouter } from "./routes/groups.routes.js";
+import { searchRouter } from "./routes/search.routes.js";
+import { reelsAudioRouter } from "./routes/reels-audio.routes.js";
+import { messagesRouter } from "./routes/messages.routes.js";
+import { premiumRouter } from "./routes/premium.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT ?? 3000);
@@ -91,6 +98,12 @@ export function createApp() {
   app.use("/api/social", socialRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api/ai", aiRoutes);
+  app.use("/api/notifications", notificationsRouter);
+  app.use("/api/groups", groupsRouter);
+  app.use("/api/search", searchRouter);
+  app.use("/api/reels-audio", reelsAudioRouter);
+  app.use("/api/messages", messagesRouter);
+  app.use("/api/premium", premiumRouter);
 
   app.use(proxyFrontend);
   app.use(notFoundHandler);
