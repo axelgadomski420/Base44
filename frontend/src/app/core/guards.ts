@@ -24,3 +24,13 @@ export const adminGuard: CanActivateFn = () => {
   if (auth.user()?.role !== 'ADMIN') return router.createUrlTree(['/discover']);
   return true;
 };
+
+/** MODERATOR lub ADMIN — panel moderacji zgłoszeń. */
+export const moderatorGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (!auth.isAuthenticated()) return router.createUrlTree(['/login']);
+  const role = auth.user()?.role;
+  if (role !== 'MODERATOR' && role !== 'ADMIN') return router.createUrlTree(['/discover']);
+  return true;
+};

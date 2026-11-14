@@ -1,7 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './core/guards';
-import { breederGuard } from './core/guards';
-import { adminGuard } from './core/guards';
+import { authGuard, breederGuard, adminGuard, moderatorGuard } from './core/guards';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'discover' },
@@ -9,6 +7,7 @@ export const routes: Routes = [
   { path: 'register', loadComponent: () => import('./features/auth/register.page').then(m => m.RegisterPage) },
   { path: 'discover', loadComponent: () => import('./features/discover/discover.page').then(m => m.DiscoverPage) },
   { path: 'explore', loadComponent: () => import('./features/discover/explore.page').then(m => m.ExplorePage) },
+  { path: 'feed', loadComponent: () => import('./features/feed/feed.page').then(m => m.FeedPage) },
   { path: 'listing/:id', loadComponent: () => import('./features/listings/listing-detail.page').then(m => m.ListingDetailPage) },
   { path: 'add', canActivate: [breederGuard], loadComponent: () => import('./features/listings/add-listing.page').then(m => m.AddListingPage) },
   { path: 'messenger', canActivate: [authGuard], loadComponent: () => import('./features/messenger/messenger.page').then(m => m.MessengerPage) },
@@ -16,6 +15,10 @@ export const routes: Routes = [
   { path: 'wallet', canActivate: [authGuard], loadComponent: () => import('./features/wallet/wallet.page').then(m => m.WalletPage) },
   { path: 'verification', canActivate: [authGuard], loadComponent: () => import('./features/verification/verification.page').then(m => m.VerificationPage) },
   { path: 'profile', canActivate: [authGuard], loadComponent: () => import('./features/profile/profile.page').then(m => m.ProfilePage) },
+  { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-hub.page').then(m => m.AdminHubPage) },
   { path: 'admin/verifications', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-verifications.page').then(m => m.AdminVerificationsPage) },
+  { path: 'admin/ads', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-ads.page').then(m => m.AdminAdsPage) },
+  { path: 'moderation', canActivate: [moderatorGuard], loadComponent: () => import('./features/moderation/moderation.page').then(m => m.ModerationPage) },
+  { path: 'assistant', loadComponent: () => import('./features/assistant/assistant.page').then(m => m.AssistantPage) },
   { path: '**', redirectTo: 'discover' }
 ];
