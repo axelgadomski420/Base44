@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "listings")
@@ -29,6 +30,35 @@ public class Listing {
 
     @Column(length = 120)
     private String breed;
+
+    /** 0.5.0: płeć zwierzaka (MALE / FEMALE). */
+    @Column(length = 10)
+    private String gender;
+
+    /** 0.5.0: data urodzenia — filtr wieku. */
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @Column(length = 80)
+    private String color;
+
+    @Column(length = 80)
+    private String coat;
+
+    @Column(name = "character_desc", columnDefinition = "TEXT")
+    private String characterDesc;
+
+    @Column(columnDefinition = "TEXT")
+    private String parents;
+
+    @Column
+    private boolean pedigree;
+
+    @Column
+    private boolean vaccinated;
+
+    @Column
+    private boolean chipped;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "listing_type", nullable = false, length = 10)
@@ -58,6 +88,10 @@ public class Listing {
 
     @Column(name = "featured_until")
     private Instant featuredUntil;
+
+    /** 0.5.0: sponsorowanie ogłoszenia (50 🪙 / 24 h, 200 🪙 / 7 dni). */
+    @Column(name = "sponsored_until")
+    private Instant sponsoredUntil;
 
     @Column(name = "published_at")
     private Instant publishedAt;

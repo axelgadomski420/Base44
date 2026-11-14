@@ -5,14 +5,18 @@ import com.purre.pets.listing.ListingMedia;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public record ListingDto(
         Long id, Long breederId, String title, String description, String species, String breed,
+        String gender, LocalDate birthDate, String color, String coat,
+        String characterDesc, String parents,
+        boolean pedigree, boolean vaccinated, boolean chipped,
         String listingType,
         BigDecimal price, String currency, String city, String region,
         BigDecimal latitude, BigDecimal longitude, String status,
-        Instant featuredUntil, Instant createdAt,
+        Instant featuredUntil, Instant sponsoredUntil, Instant createdAt,
         BigDecimal distanceKm,
         List<MediaDto> media
 ) {
@@ -24,10 +28,14 @@ public record ListingDto(
 
     public static ListingDto from(Listing l, List<ListingMedia> media, BigDecimal distanceKm) {
         return new ListingDto(l.getId(), l.getBreederId(), l.getTitle(), l.getDescription(),
-                l.getSpecies().name(), l.getBreed(), l.getListingType().name(),
+                l.getSpecies().name(), l.getBreed(),
+                l.getGender(), l.getBirthDate(), l.getColor(), l.getCoat(),
+                l.getCharacterDesc(), l.getParents(),
+                l.isPedigree(), l.isVaccinated(), l.isChipped(),
+                l.getListingType().name(),
                 l.getPrice(), l.getCurrency(), l.getCity(), l.getRegion(),
                 l.getLatitude(), l.getLongitude(), l.getStatus().name(),
-                l.getFeaturedUntil(), l.getCreatedAt(), distanceKm,
+                l.getFeaturedUntil(), l.getSponsoredUntil(), l.getCreatedAt(), distanceKm,
                 media.stream().map(MediaDto::from).toList());
     }
 }

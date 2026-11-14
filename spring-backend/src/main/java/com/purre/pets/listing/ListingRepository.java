@@ -17,7 +17,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
 
     /**
      * Wyszukiwanie po odległości — Haversine w czystym SQL (MySQL, bez PostGIS).
-     * 0.4.0: filtry ceny (min/max) — sortowanie po stronie serwisu.
+     * 0.5.0: filtry płci i maksymalnego wieku (miesiące).
      */
     @Query(value = """
             SELECT l.*,
@@ -33,6 +33,9 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
               AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
               AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
               AND (:listingType IS NULL OR l.listing_type = :listingType)
+              AND (:gender IS NULL OR l.gender = :gender)
+              AND (:maxAgeMonths IS NULL OR l.birth_date IS NULL
+                   OR l.birth_date >= DATE_SUB(NOW(), INTERVAL :maxAgeMonths MONTH))
               AND (:minPrice IS NULL OR l.price >= :minPrice)
               AND (:maxPrice IS NULL OR l.price <= :maxPrice)
             HAVING distance_km <= :radiusKm
@@ -53,6 +56,9 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                   AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
                   AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
                   AND (:listingType IS NULL OR l.listing_type = :listingType)
+                  AND (:gender IS NULL OR l.gender = :gender)
+                  AND (:maxAgeMonths IS NULL OR l.birth_date IS NULL
+                       OR l.birth_date >= DATE_SUB(NOW(), INTERVAL :maxAgeMonths MONTH))
                   AND (:minPrice IS NULL OR l.price >= :minPrice)
                   AND (:maxPrice IS NULL OR l.price <= :maxPrice)
                 HAVING distance_km <= :radiusKm
@@ -66,6 +72,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                                            @Param("breed") String breed,
                                            @Param("city") String city,
                                            @Param("listingType") String listingType,
+                                           @Param("gender") String gender,
+                                           @Param("maxAgeMonths") Integer maxAgeMonths,
                                            @Param("minPrice") BigDecimal minPrice,
                                            @Param("maxPrice") BigDecimal maxPrice,
                                            Pageable pageable);

@@ -70,6 +70,15 @@ public class ListingService {
                 .description(req.description().trim())
                 .species(Species.valueOf(req.species().toUpperCase()))
                 .breed(req.breed())
+                .gender(req.gender() == null || req.gender().isBlank() ? null : req.gender().toUpperCase())
+                .birthDate(req.birthDate())
+                .color(req.color())
+                .coat(req.coat())
+                .characterDesc(req.characterDesc())
+                .parents(req.parents())
+                .pedigree(Boolean.TRUE.equals(req.pedigree()))
+                .vaccinated(Boolean.TRUE.equals(req.vaccinated()))
+                .chipped(Boolean.TRUE.equals(req.chipped()))
                 .listingType(type)
                 .price(req.price())
                 .currency("PLN")
@@ -125,6 +134,42 @@ public class ListingService {
         return ListingDto.from(listing, mediaOf(listingId), null);
     }
 
+    /** 0.5.0: sponsorowanie ogłoszenia — 50 🪙 / 24 h, 200 🪙 / 7 dni. */
+    @Transactional
+    public ListingDto sponsor(Long breederId, Long listingId, int days) {
+        if (days != 1 && days != 7) {
+            throw ApiException.badRequest("BAD_SPONSOR", "Sponsorowanie: 1 dzień (50 🪙) lub 7 dni (200 🪙).");
+        }
+        Listing listing = ownedListing(breederId, listingId);
+        int cost = days == 1 ? 50 : 200;
+        coinService.spend(breederId, cost, CoinReason.LISTING_FEATURE,
+                "sponsor:" + listingId + ":" + LocalDate.now());
+        listing.setSponsoredUntil(Instant.now().plusSeconds(days * 24 * 3600L));
+        listing.setUpdatedAt(Instant.now());
+        listingRepository.save(listing);
+        log.info("Ogłoszenie {} sponsorowane na {} dni przez hodowcę {} ({} 🪙).", listingId, days, breederId, cost);
+        return ListingDto.from(listing, mediaOf(listingId), null);
+    }
+
+    /** 0.5.0: zmiana statusu — dostępny / opcja / zarezerwowany / sprzedany / planowany miot / ukryty. */
+    @Transactional
+    public ListingDto updateStatus(Long breederId, Long listingId, String status) {
+        Listing listing = ownedListing(breederId, listingId);
+        ListingStatus next;
+        try {
+            next = ListingStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw ApiException.badRequest("BAD_STATUS", "Status: ACTIVE, OPTION, RESERVED, SOLD, PLANNED lub HIDDEN.");
+        }
+        if (next == ListingStatus.PLANNED && listing.getListingType() != ListingType.ADOPTION && listing.getBirthDate() != null) {
+            throw ApiException.badRequest("BAD_PLANNED", "„Planowany miot” dotyczy ogłoszeń bez daty urodzenia.");
+        }
+        listing.setStatus(next);
+        listing.setUpdatedAt(Instant.now());
+        listingRepository.save(listing);
+        return ListingDto.from(listing, mediaOf(listingId), null);
+    }
+
     @Transactional
     public int boostProfile(Long breederId) {
         coinService.spend(breederId, props.getCoins().getProfileBoostCost(),
@@ -159,17 +204,20 @@ public class ListingService {
 
     /**
      * 0.4.0: sort — NEWEST (domyślnie), PRICE_ASC, PRICE_DESC, DISTANCE.
-     * Wyróżnione ogłoszenia zawsze na początku.
+     * 0.5.0: filtry płci i wieku. Wyróżnione i sponsorowane zawsze na początku.
      */
     @Transactional(readOnly = true)
     public List<ListingDto> nearby(double lat, double lng, double radiusKm, String species, String breed, String city,
-                                   String listingType, BigDecimal minPrice, BigDecimal maxPrice, String sort,
+                                   String listingType, String gender, Integer maxAgeMonths,
+                                   BigDecimal minPrice, BigDecimal maxPrice, String sort,
                                    int page, int size) {
         Pageable pageable = PageRequest.of(page, Math.min(size, 50));
         List<ListingDto> dtos = listingRepository.searchNearby(lat, lng, radiusKm,
                         species == null || species.isBlank() ? null : species.toUpperCase(),
                         breed, city,
                         listingType == null || listingType.isBlank() ? null : listingType.toUpperCase(),
+                        gender == null || gender.isBlank() ? null : gender.toUpperCase(),
+                        maxAgeMonths,
                         minPrice, maxPrice, pageable)
                 .stream()
                 .map(row -> {
@@ -180,8 +228,12 @@ public class ListingService {
                 .filter(java.util.Objects::nonNull)
                 .toList();
 
-        Comparator<ListingDto> featured = Comparator.comparing(
-                (ListingDto d) -> d.featuredUntil() != null && d.featuredUntil().isAfter(Instant.now()) ? 0 : 1);
+        Comparator<ListingDto> priority = Comparator.comparing((ListingDto d) -> {
+            int rank = 0;
+            if (d.featuredUntil() != null && d.featuredUntil().isAfter(Instant.now())) rank |= 2;
+            if (d.sponsoredUntil() != null && d.sponsoredUntil().isAfter(Instant.now())) rank |= 1;
+            return rank;
+        }).reversed();
         String mode = sort == null ? "NEWEST" : sort.trim().toUpperCase();
         Comparator<ListingDto> rest = switch (mode) {
             case "PRICE_ASC" -> Comparator.comparing(ListingDto::price,
@@ -192,7 +244,7 @@ public class ListingService {
                     Comparator.nullsLast(Comparator.reverseOrder()));
             default -> Comparator.comparing(d -> d.distanceKm() == null ? Double.MAX_VALUE : d.distanceKm().doubleValue());
         };
-        return dtos.stream().sorted(featured.thenComparing(rest)).toList();
+        return dtos.stream().sorted(priority.thenComparing(rest)).toList();
     }
 
     /** 0.4.0: podpowiedzi wyszukiwarki (rasy + miasta) w czasie rzeczywistym. */

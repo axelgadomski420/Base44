@@ -21,7 +21,7 @@ public class ListingController {
 
     private final ListingService listingService;
 
-    /** 0.4.0: filtry ceny + sortowanie (NEWEST / PRICE_ASC / PRICE_DESC / DISTANCE). */
+    /** 0.4.0/0.5.0: filtry ceny, płci, wieku + sortowanie (NEWEST / PRICE_ASC / PRICE_DESC / DISTANCE). */
     @GetMapping
     public List<ListingDto> nearby(@RequestParam double lat,
                                    @RequestParam double lng,
@@ -30,13 +30,15 @@ public class ListingController {
                                    @RequestParam(required = false) String breed,
                                    @RequestParam(required = false) String city,
                                    @RequestParam(required = false) String listingType,
+                                   @RequestParam(required = false) String gender,
+                                   @RequestParam(required = false) Integer maxAgeMonths,
                                    @RequestParam(required = false) BigDecimal minPrice,
                                    @RequestParam(required = false) BigDecimal maxPrice,
                                    @RequestParam(required = false) String sort,
                                    @RequestParam(defaultValue = "0") int page,
                                    @RequestParam(defaultValue = "24") int size) {
         return listingService.nearby(lat, lng, radiusKm, species, breed, city, listingType,
-                minPrice, maxPrice, sort, page, size);
+                gender, maxAgeMonths, minPrice, maxPrice, sort, page, size);
     }
 
     /** 0.4.0: podpowiedzi wyszukiwarki w czasie rzeczywistym (debounce po stronie frontendu). */
@@ -73,6 +75,22 @@ public class ListingController {
     @PreAuthorize("hasRole('BREEDER')")
     public ListingDto feature(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id) {
         return listingService.feature(principal.id(), id);
+    }
+
+    /** 0.5.0: sponsorowanie — 1 dzień (50 🪙) lub 7 dni (200 🪙). */
+    @PostMapping("/{id}/sponsor")
+    @PreAuthorize("hasRole('BREEDER')")
+    public ListingDto sponsor(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id,
+                              @RequestBody Map<String, Integer> body) {
+        return listingService.sponsor(principal.id(), id, body.getOrDefault("days", 1));
+    }
+
+    /** 0.5.0: zmiana statusu ogłoszenia. */
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('BREEDER')")
+    public ListingDto updateStatus(@AuthenticationPrincipal UserPrincipal principal, @PathVariable Long id,
+                                   @RequestBody Map<String, String> body) {
+        return listingService.updateStatus(principal.id(), id, body.getOrDefault("status", "ACTIVE"));
     }
 
     @PostMapping("/boost-profile")
