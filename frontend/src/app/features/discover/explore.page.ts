@@ -25,7 +25,9 @@ interface SavedSearchDto {
     <h1 class="text-2xl font-extrabold">{{ i18n.t('nav.explore') }}</h1>
     <div class="flex gap-2">
       <button class="purre-badge" (click)="saveSearch()">💾 Zapisz</button>
-      <a routerLink="/feed" class="purre-badge">🎬 HoloFeed</a>
+      <a routerLink="/community" class="purre-badge">👥</a>
+      <a routerLink="/events" class="purre-badge">📅</a>
+      <a routerLink="/feed" class="purre-badge">🎬</a>
     </div>
   </header>
 
