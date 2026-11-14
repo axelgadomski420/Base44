@@ -1,5 +1,26 @@
 # Changelog — PURRE PETS
 
+## [0.3.0] — Edytor wideo, 2FA + sesje, komplet 15 gier Arcade
+
+### Dodano
+- **Edytor wideo z dźwiękiem (FFmpeg):** POST /media/video-edit — przycinanie (trim), wyciszanie,
+  tempo 0.5–2×, głośność wideo, podkład muzyczny (MP3/WAV/M4A/AAC/OGG) z regulacją głośności i amix.
+  Wynik zawsze MP4 (H.264 + AAC, faststart), ochrona path traversal, timeout renderu 120 s, rate limit 10/min.
+  Strona /video-editor: podgląd, trim z wideo („Start/Koniec = tu"), render, kopiowanie adresu wyniku.
+- **2FA (TOTP, RFC 6238):** setup/enable/disable (GET /auth/2fa/status, POST /auth/2fa/setup|enable|disable),
+  własna implementacja bez zależności (Base32 + HMAC-SHA1, okno ±1), login dwuetapowy (require2fa),
+  otpauth:// URI dla Google Authenticator/Aegis/Authy. Migracja V9 (totp_secret, totp_enabled).
+- **Sesje:** refresh tokeny (SHA-256 w bazie, rotacja przy /auth/refresh, TTL 30 dni), tabela sessions
+  (urządzenie, IP, ostatnie użycie), lista sesji + wylogowanie pojedynczej sesji i innych urządzeń,
+  POST /auth/logout. Frontend: auto-refresh sesji przy wygasłym access tokenie.
+- **Arcade — komplet 15 gier:** PURRE 2048, Memory, Quiz, Snake, Tetris, Flappy, Runner, Match-3, Wordle,
+  Trivia, Coloring, Puzzle (przesuwane kafelki), Bubble (strzelanie bąbelkami), Hex (reakcja kolorów),
+  Jump (timing). Wszystkie z anti-cheat backendowym (limity wyniku i czasu wg GameRule), selektor gier.
+
+### Bezpieczeństwo
+- 2FA opcjonalne per użytkownik, refresh tokeny hashowane SHA-256, rotacja sesji, zdalne wylogowanie,
+  walidacja ścieżek mediów przed ffmpeg, limity rozmiaru wyniku (10 MB), brak hazardu i wypłat Coins.
+
 ## [0.2.0] — Fazy 2–4: Messenger, HoloFeed, Moderacja, Premium
 
 ### Dodano
