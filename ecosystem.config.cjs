@@ -11,6 +11,9 @@ module.exports = {
         DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/purrepets?schema=public',
         JWT_SECRET: 'super-secret-jwt-key-purrepets-2026',
         JWT_EXPIRES_IN: '7d',
+        PUBLIC_BASE_URL: 'https://purrepets.pl',
+        UPLOAD_DIR: '/var/www/purrepets/uploads',
+        FRONTEND_PORT: 3000,
         CORS_ORIGINS: 'http://92.5.154.243,https://purrepets.pl,http://www.purrepets.pl,https://www.purrepets.pl'
       }
     },

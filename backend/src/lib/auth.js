@@ -46,7 +46,7 @@ export function optionalAuth(req, res, next) {
 }
 
 export function isAdmin(req) {
-  return req.user?.role === "admin";
+  return String(req.user?.role || "").toLowerCase() === "admin";
 }
 
 export function isModerator(req) {

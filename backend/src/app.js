@@ -1,7 +1,8 @@
-import aiRoutes from "./routes/ai.routes.js";
 import express from "express";
 import cors from "cors";
+import http from "node:http";
 import path from "node:path";
+import aiRoutes from "./routes/ai.routes.js";
 import { config } from "./config.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { entitiesRouter } from "./routes/entities.routes.js";
@@ -14,19 +15,56 @@ import { stripeRouter } from "./routes/stripe.routes.js";
 import { socialRouter, adminRouter } from "./routes/social.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
+const FRONTEND_PORT = Number(process.env.FRONTEND_PORT ?? 3000);
+
+// Nginx on the live box currently forwards "/" to this API. Hand HTML and
+// assets to the TanStack preview instead of answering with "No route: GET /".
+function proxyFrontend(req, res, next) {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  const url = req.originalUrl || "/";
+  if (
+    url === "/api" ||
+    url.startsWith("/api/") ||
+    url.startsWith("/uploads/") ||
+    url === "/uploads" ||
+    url.startsWith("/socket.io")
+  ) {
+    return next();
+  }
+
+  const headers = { ...req.headers };
+  delete headers.connection;
+  delete headers["transfer-encoding"];
+  delete headers["content-length"];
+
+  const proxyReq = http.request(
+    {
+      hostname: "127.0.0.1",
+      port: FRONTEND_PORT,
+      path: url,
+      method: req.method,
+      headers,
+    },
+    (proxyRes) => {
+      const out = { ...proxyRes.headers };
+      delete out["transfer-encoding"];
+      res.writeHead(proxyRes.statusCode || 502, out);
+      proxyRes.pipe(res);
+    }
+  );
+  proxyReq.setTimeout(20000, () => proxyReq.destroy(new Error("frontend timeout")));
+  proxyReq.on("error", () => next());
+  proxyReq.end();
+}
+
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
 
-  app.use("/api/ai", aiRoutes);
-app.use(
-    cors()
-  );
-
-  app.use("/api/ai", aiRoutes);
-app.use(
+  app.use(cors());
+  app.use(
     express.json({
       limit: "2mb",
       verify: (req, _res, buf) => {
@@ -35,40 +73,28 @@ app.use(
     })
   );
 
-  // Uploaded files are served publicly (UploadPublicFile returns public URLs).
-  app.use("/api/ai", aiRoutes);
-app.use(
+  app.use(
     "/uploads",
-    express.static(path.resolve(config.uploadDir), { fallthrough: false, maxAge: "30d", immutable: true })
+    express.static(path.resolve(config.uploadDir), { fallthrough: true, maxAge: "30d" })
   );
 
-  app.get("/api/health", (req, res) => res.json({ ok: true, now: new Date().toISOString() }));
+  app.get("/api/health", (_req, res) => res.json({ ok: true, now: new Date().toISOString() }));
 
+  app.use("/api/auth", authRouter);
+  app.use("/api/entities", entitiesRouter);
+  app.use("/api/uploads", uploadsRouter);
+  app.use("/api/games", gamesRouter);
+  app.use("/api/rewards", rewardsRouter);
+  app.use("/api/listings", listingsRouter);
+  app.use("/api/assistant", assistantRouter);
+  app.use("/api/stripe", stripeRouter);
+  app.use("/api/social", socialRouter);
+  app.use("/api/admin", adminRouter);
   app.use("/api/ai", aiRoutes);
-app.use("/api/auth", authRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/entities", entitiesRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/uploads", uploadsRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/games", gamesRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/rewards", rewardsRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/listings", listingsRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/assistant", assistantRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/stripe", stripeRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/social", socialRouter);
-  app.use("/api/ai", aiRoutes);
-app.use("/api/admin", adminRouter);
 
-  app.use("/api/ai", aiRoutes);
-app.use(notFoundHandler);
-  app.use("/api/ai", aiRoutes);
-app.use(errorHandler);
+  app.use(proxyFrontend);
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

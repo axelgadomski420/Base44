@@ -21,7 +21,7 @@ export const config = {
     "http://www.purrepets.pl",
     "https://www.purrepets.pl"
   ],
-  uploadDir: process.env.UPLOAD_DIR ?? "uploads",
+  uploadDir: process.env.UPLOAD_DIR ?? "/var/www/purrepets/uploads",
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 26214400),
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",

@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const router = express.Router();
 
@@ -15,9 +14,9 @@ router.post("/chat", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "speakleash/bielik-7b-instruct-v0.1:Q4_K_M",
-        prompt: prompt,
-        stream: false
-      })
+        prompt,
+        stream: false,
+      }),
     });
 
     const data = await response.json();

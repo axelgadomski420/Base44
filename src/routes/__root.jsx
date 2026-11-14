@@ -2,6 +2,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import { DefaultCatchBoundary } from "@/components/DefaultCatchBoundary";
 import { NotFound } from "@/components/NotFound";
 import { Toaster } from "@/components/ui/sonner";
+import MediaUrlFix from "@/components/common/MediaUrlFix";
 import { RodoBanner } from "@/components/common/RodoBanner";
 import { AuthProvider } from "@/lib/AuthContext";
 import { I18nProvider } from "@/lib/i18n";
@@ -43,6 +44,7 @@ function RootComponent() {
       <I18nProvider>
         <ThemeProvider>
           <Outlet />
+          <MediaUrlFix />
           <RodoBanner />
           <Toaster />
         </ThemeProvider>
