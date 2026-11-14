@@ -34,7 +34,8 @@ export class ApiError extends Error {
 
 function token() {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    // Kompatybilność: purre:token (główny), token i auth_token (starsze klucze).
+    return localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem("purre:token") ?? localStorage.getItem("token") ?? localStorage.getItem("auth_token") ?? null;
   } catch {
     return null;
   }
@@ -151,8 +152,17 @@ const entities = Object.fromEntries(Object.keys(ENTITY_PATHS).map((name) => [nam
 export const auth = {
   hasToken: () => !!token(),
   setToken: (value) => {
-    if (value) localStorage.setItem(TOKEN_KEY, value);
-    else localStorage.removeItem(TOKEN_KEY);
+    try {
+      if (value) {
+        localStorage.setItem(TOKEN_KEY, value);
+        localStorage.setItem("purre:token", value);
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem("purre:token");
+        localStorage.removeItem("token");
+        localStorage.removeItem("auth_token");
+      }
+    } catch {}
   },
   async me() {
     if (!token()) {
@@ -256,6 +266,8 @@ export const messagesApi = {
   markRead: (id) => request(`/api/messages/${id}/read`, { method: "POST", body: {} }),
   react: (id, emoji) => request(`/api/messages/${id}/react`, { method: "POST", body: { emoji } }),
   remove: (id) => request(`/api/messages/${id}`, { method: "DELETE" }),
+  typingSignal: (conversationId) => request(`/api/messages/typing/${conversationId}`, { method: "POST", body: {} }),
+  typing: (conversationId) => request(`/api/messages/typing/${conversationId}`),
 };
 
 // Muzyka / audio do rolek
@@ -301,6 +313,35 @@ export const billing = {
 
 // ---------------------------------------------------------------- Public client
 
+
+// ---------------------------------------------------------------- E2E / Stories / Profile (dodane)
+
+export const e2eApi = {
+  register: (body) => request("/api/e2e/keys", { method: "POST", body }),
+  keys: (userId) => request(`/api/e2e/keys/${encodeURIComponent(userId)}`),
+  status: () => request("/api/e2e/status"),
+};
+
+export const storiesApi = {
+  list: () => request("/api/stories"),
+  create: (body) => request("/api/stories", { method: "POST", body }),
+  view: (id) => request(`/api/stories/${id}/view`, { method: "POST", body: {} }),
+  react: (id, emoji) => request(`/api/stories/${id}/react`, { method: "POST", body: { emoji } }),
+  mine: () => request("/api/stories/mine"),
+  remove: (id) => request(`/api/stories/${id}`, { method: "DELETE" }),
+};
+
+export const profileApi = {
+  me: () => request("/api/profile/me"),
+  update: (body) => request("/api/profile/me", { method: "PATCH", body }),
+};
+
+// Rozszerzenia messagesApi: wskaźnik „pisze…”
+export const typingApi = {
+  signal: (conversationId) => request(`/api/messages/typing/${conversationId}`, { method: "POST", body: {} }),
+  get: (conversationId) => request(`/api/messages/typing/${conversationId}`),
+};
+
 export const base44 = {
   auth,
   functions,
@@ -312,6 +353,9 @@ export const base44 = {
   reelsAudio: reelsAudioApi,
   premium: premiumApi,
   reports: reportsApi,
+  e2e: e2eApi,
+  stories: storiesApi,
+  profile: profileApi,
   admin: adminApi,
   billing,
   entities,
