@@ -169,6 +169,7 @@ interface SessionDto { id: number; userAgent?: string; ip?: string; createdAt: s
     }
     <a routerLink="/wallet" class="purre-card p-4 block">🪙 PURRE Coins — portfel</a>
     <a routerLink="/video-editor" class="purre-card p-4 block">🎬 Edytor wideo (trim, tempo, muzyka)</a>
+    <a routerLink="/my-ads" class="purre-card p-4 block">📣 Reklama sponsorowana</a>
     @if (isBreeder() && !auth.user()?.verifiedBadge) {
       <a routerLink="/verification" class="purre-card p-4 block">📋 Weryfikacja hodowli</a>
     }
@@ -318,7 +319,9 @@ export class ProfilePage implements OnInit {
     fd.append('file', file);
     this.api.postMultipart<any>('/users/me/avatar', fd).subscribe({
       next: (user) => {
-        this.auth.patchUser({ avatarUrl: user.avatarUrl });
+        // Cache-buster: przeglądarka natychmiast pokazuje nowy awatar (bez starego z cache).
+        const bust = user.avatarUrl + '?v=' + Date.now();
+        this.auth.patchUser({ avatarUrl: bust });
         this.uploadingAvatar.set(false);
         this.profileMsg.set('✅ Zdjęcie profilowe zaktualizowane.');
       },
