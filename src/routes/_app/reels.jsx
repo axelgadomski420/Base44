@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Film } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReelVideo from "@/components/reels/ReelVideo";
+import AdSlot from "@/components/ads/AdSlot";
+import { useAds } from "@/hooks/useAds";
 
 export const Route = createFileRoute("/_app/reels")({
   head: () => ({
@@ -16,6 +18,7 @@ export const Route = createFileRoute("/_app/reels")({
 
 function ReelsPage() {
   const navigate = useNavigate();
+  const { mix } = useAds();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +28,8 @@ function ReelsPage() {
       .catch(() => null)
       .finally(() => setLoading(false));
   }, []);
+
+  const rows = useMemo(() => mix(posts, "reels"), [mix, posts]);
 
   return (
     <div className="relative h-[calc(100dvh-96px)] w-full bg-black lg:h-screen">
@@ -68,11 +73,20 @@ function ReelsPage() {
         </div>
       ) : (
         <div className="no-scrollbar h-full snap-y snap-mandatory overflow-y-auto overscroll-contain">
-          {posts.map((post) => (
-            <div key={post.id} className="h-full w-full">
-              <ReelVideo post={post} />
-            </div>
-          ))}
+          {rows.map((row, index) =>
+            row.type === "ad" ? (
+              <div
+                key={`ad-${row.ad.id}-${index}`}
+                className="flex h-full w-full snap-start items-center justify-center bg-gradient-to-b from-black via-zinc-950 to-black px-6"
+              >
+                <AdSlot ad={row.ad} variant="banner" className="w-full max-w-md" />
+              </div>
+            ) : (
+              <div key={row.data.id} className="h-full w-full snap-start">
+                <ReelVideo post={row.data} />
+              </div>
+            )
+          )}
         </div>
       )}
     </div>
