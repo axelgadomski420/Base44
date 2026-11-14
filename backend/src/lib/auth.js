@@ -48,3 +48,8 @@ export function optionalAuth(req, res, next) {
 export function isAdmin(req) {
   return req.user?.role === "admin";
 }
+
+export function isModerator(req) {
+  const role = req.user?.role;
+  return role === "admin" || role === "moderator";
+}

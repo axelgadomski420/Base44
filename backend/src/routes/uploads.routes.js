@@ -14,6 +14,8 @@ fs.mkdirSync(path.resolve(config.uploadDir), { recursive: true });
 const ALLOWED = new Set([
   "image/jpeg", "image/png", "image/webp", "image/gif", "image/avif",
   "video/mp4", "video/webm", "video/quicktime",
+  // audio for reels music + stories
+  "audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm", "audio/aac", "audio/mp4", "audio/x-m4a",
 ]);
 
 const storage = multer.diskStorage({
@@ -34,8 +36,7 @@ const upload = multer({
   },
 });
 
-// POST /api/uploads (multipart, field "file") â { file_url }
-// Replaces base44.integrations.Core.UploadPublicFile.
+// POST /api/uploads (multipart, field "file") → { file_url }
 uploadsRouter.post(
   "/",
   requireAuth,

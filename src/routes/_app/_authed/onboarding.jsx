@@ -4,7 +4,6 @@ import { Dog, Heart, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { ensureProfile } from "@/lib/useProfile";
-import { safeReturnTo } from "@/lib/authReturnTo";
 import { CITY_NAMES } from "@/lib/geo";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +29,6 @@ const OPTIONS = [
 
 function OnboardingPage() {
   const { user } = useAuth();
-  const returnTo = safeReturnTo();
   const [type, setType] = useState("breeder");
   const [kennel, setKennel] = useState("");
   const [city, setCity] = useState("Warszawa");
@@ -53,7 +51,8 @@ function OnboardingPage() {
         ...(type === "breeder" ? { kennel_name: kennel.trim() } : {}),
       });
       localStorage.removeItem("purre:account_type");
-      window.location.href = returnTo;
+      // Wymuszamy natychmiastowe, niezawodne przekierowanie na profil
+      window.location.href = "/profile";
     } catch (err) {
       setError(err?.message ?? "Nie udało się zapisać konta");
       setBusy(false);

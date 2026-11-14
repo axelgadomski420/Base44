@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "@tanstack/react-router";
 
 export const RodoBanner = () => {
   const [accepted, setAccepted] = useState(true);
@@ -18,25 +19,39 @@ export const RodoBanner = () => {
   if (accepted) return null;
 
   return (
-    <div style={{
-      position: "fixed",
-      bottom: 0,
-      left: 0,
-      right: 0,
-      background: "#1f2937",
-      color: "#f3f4f6",
-      padding: "16px 24px",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      zIndex: 99999,
-      boxShadow: "0 -4px 6px -1px rgba(0, 0, 0, 0.1)",
-      fontSize: "14px"
-    }}>
-      <div style={{ maxWidth: "800px" }}>
-        <span>Używamy plików cookies i podobnych technologii w celach świadczenia usług, statystycznych oraz RODO. Korzystając ze strony, wyrażasz na to zgodę.</span>
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: "#1f2937",
+        color: "#f3f4f6",
+        padding: "16px 24px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        zIndex: 99999,
+        boxShadow: "0 -4px 6px -1px rgba(0, 0, 0, 0.1)",
+        fontSize: "14px",
+        gap: "12px",
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ maxWidth: "800px", flex: "1 1 280px" }}>
+        <span>
+          Używamy plików cookies i podobnych technologii w celach świadczenia usług, statystycznych oraz RODO.
+          Korzystając ze strony, wyrażasz na to zgodę.{" "}
+        </span>
+        <Link to="/privacy" style={{ color: "#a78bfa", textDecoration: "underline" }}>
+          Polityka prywatności
+        </Link>
+        {" · "}
+        <Link to="/terms" style={{ color: "#a78bfa", textDecoration: "underline" }}>
+          Regulamin
+        </Link>
       </div>
-      <button 
+      <button
         onClick={handleAccept}
         style={{
           background: "#10b981",
@@ -46,7 +61,7 @@ export const RodoBanner = () => {
           borderRadius: "6px",
           cursor: "pointer",
           fontWeight: "600",
-          marginLeft: "16px"
+          whiteSpace: "nowrap",
         }}
       >
         Rozumiem i akceptuję
