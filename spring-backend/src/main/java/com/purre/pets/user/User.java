@@ -49,6 +49,12 @@ public class User {
     @Column(name = "premium_until")
     private Instant premiumUntil;
 
+    @Column(name = "totp_secret", length = 64)
+    private String totpSecret;
+
+    @Column(name = "totp_enabled", nullable = false)
+    private boolean totpEnabled;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 }
