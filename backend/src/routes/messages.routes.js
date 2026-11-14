@@ -9,14 +9,21 @@ export const messagesRouter = Router();
 
 messagesRouter.use(requireAuth);
 
+// Wskaźnik „pisze…” — trzymany w pamięci procesu (4 sekundy świeżości).
+const typingMap = new Map(); // conversation_id -> Map(user_id -> { name, ts })
+
 const sendSchema = z.object({
   conversation_id: z.string().trim().min(1).optional(),
   recipient_id: z.string().trim().min(1).optional(),
-  content: z.string().trim().max(4000).optional(),
+  content: z.string().max(4000).optional(),
+  // E2E (jak w Messengerze Meta): treść zaszyfrowana AES-GCM kluczem ECDH P-256.
+  ciphertext: z.string().max(8000).optional(),
+  iv: z.string().max(200).optional(),
+  e2e: z.boolean().optional(),
   media_url: z.string().trim().max(500).optional(),
   media_type: z.enum(["image", "video"]).optional(),
 }).refine((d) => d.conversation_id || d.recipient_id, { message: "conversation_id albo recipient_id" })
-  .refine((d) => (d.content && d.content.length) || d.media_url, { message: "Treść albo załącznik" });
+  .refine((d) => (d.content && d.content.length) || d.ciphertext || d.media_url, { message: "Treść albo załącznik" });
 
 async function getOrCreateConversation(userId, { conversationId, recipientId }) {
   if (conversationId) {
@@ -43,6 +50,12 @@ async function getOrCreateConversation(userId, { conversationId, recipientId }) 
   });
 }
 
+function previewOf(data) {
+  if (data.media_url) return data.media_type === "video" ? "📹 Wideo" : "🖼 Zdjęcie";
+  if (data.e2e) return "🔒 Wiadomość zaszyfrowana";
+  return (data.content || "").slice(0, 120);
+}
+
 // GET /api/messages/conversations?q= — lista rozmów + wyszukiwarka.
 messagesRouter.get(
   "/conversations",
@@ -64,7 +77,7 @@ messagesRouter.get(
   })
 );
 
-// GET /api/messages/conversations/:id/messages — historia + oznaczenie odczytu.
+// GET /api/messages/conversations/:id/messages — historia + statusy odczytu.
 messagesRouter.get(
   "/conversations/:id/messages",
   asyncHandler(async (req, res) => {
@@ -74,7 +87,7 @@ messagesRouter.get(
     const messages = await prisma.message.findMany({
       where: { conversation_id: conv.id, deleted: false },
       orderBy: { created_date: "asc" },
-      take: 200,
+      take: 300,
     });
     await prisma.message.updateMany({
       where: { conversation_id: conv.id, seen: false, NOT: { sender_id: req.user.id } },
@@ -85,15 +98,18 @@ messagesRouter.get(
     });
     res.json({
       conversation: conv,
+      e2e_participants: conv.members,
       items: messages.map((m) => ({
         ...m,
+        delivered: !!m.delivered_at,
+        read: !!m.read_at,
         reactions: reactions.filter((r) => r.message_id === m.id),
       })),
     });
   })
 );
 
-// POST /api/messages/send — wiadomość tekstowa lub z mediami.
+// POST /api/messages/send — wiadomość tekstowa (E2E lub zwykła) / z mediami.
 messagesRouter.post(
   "/send",
   asyncHandler(async (req, res) => {
@@ -106,7 +122,10 @@ messagesRouter.post(
         members: conv.members,
         sender_id: req.user.id,
         sender_name: profile?.display_name || req.user.full_name || req.user.email,
-        content: data.content ?? "",
+        content: data.e2e ? "" : (data.content ?? ""),
+        ciphertext: data.ciphertext ?? null,
+        iv: data.iv ?? null,
+        e2e: !!data.e2e,
         media_url: data.media_url ?? null,
         media_type: data.media_type ?? null,
         delivered_at: new Date(),
@@ -115,14 +134,14 @@ messagesRouter.post(
     });
     await prisma.conversation.update({
       where: { id: conv.id },
-      data: { last_message: data.media_url ? (data.media_type === "video" ? "📹 Wideo" : "🖼 Zdjęcie") : data.content.slice(0, 120), last_sender_id: req.user.id, last_message_at: new Date() },
+      data: { last_message: previewOf(data), last_sender_id: req.user.id, last_message_at: new Date() },
     });
     for (const memberId of conv.members) {
       if (memberId !== req.user.id) {
         await notify(memberId, {
           type: "message",
-          title: "Nowa wiadomość",
-          body: (data.content || "Załącznik").slice(0, 120),
+          title: data.e2e ? "Nowa zaszyfrowana wiadomość 🔒" : "Nowa wiadomość",
+          body: data.e2e ? "Otwórz rozmowę, aby odszyfrować." : (data.content || "Załącznik").slice(0, 120),
           link: "/messages",
           actor_name: message.sender_name,
           actor_id: req.user.id,
@@ -133,7 +152,42 @@ messagesRouter.post(
   })
 );
 
-// POST /api/messages/:id/read — potwierdzenie odczytu (status „odczytano”).
+// POST /api/messages/typing/:conversationId — „pisze…”.
+messagesRouter.post(
+  "/typing/:conversationId",
+  asyncHandler(async (req, res) => {
+    const conv = await prisma.conversation.findUnique({ where: { id: req.params.conversationId } });
+    if (!conv || !conv.members.includes(req.user.id)) throw notFound();
+    const perConv = typingMap.get(conv.id) ?? new Map();
+    perConv.set(req.user.id, {
+      name: req.user.full_name || req.user.email,
+      ts: Date.now(),
+    });
+    typingMap.set(conv.id, perConv);
+    res.json({ ok: true });
+  })
+);
+
+// GET /api/messages/typing/:conversationId — kto pisze (świeżość 4 s).
+messagesRouter.get(
+  "/typing/:conversationId",
+  asyncHandler(async (req, res) => {
+    const conv = await prisma.conversation.findUnique({ where: { id: req.params.conversationId } });
+    if (!conv || !conv.members.includes(req.user.id)) throw notFound();
+    const perConv = typingMap.get(conv.id);
+    const now = Date.now();
+    const typing = [];
+    if (perConv) {
+      for (const [userId, info] of perConv.entries()) {
+        if (userId !== req.user.id && now - info.ts < 4000) typing.push({ user_id: userId, name: info.name });
+        if (now - info.ts >= 30000) perConv.delete(userId);
+      }
+    }
+    res.json({ typing });
+  })
+);
+
+// POST /api/messages/:id/read — potwierdzenie odczytu („odczytano”).
 messagesRouter.post(
   "/:id/read",
   asyncHandler(async (req, res) => {
@@ -173,7 +227,7 @@ messagesRouter.post(
   })
 );
 
-// DELETE /api/messages/:id — usuwanie wiadomości (soft delete).
+// DELETE /api/messages/:id — usuwanie wiadomości (dla obu stron, jak w Messengerze).
 messagesRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
