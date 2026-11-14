@@ -32,7 +32,7 @@ echo "==> [6/10] Uprawnienia do uploads (zapis dla PM2)…"
 sudo chown -R "$(whoami)": "$UPLOAD_DIR" 2>/dev/null || true
 chmod -R u+rwX "$UPLOAD_DIR" 2>/dev/null || true
 
-echo "==> [7/10] Build frontendu (Vite/TanStack Start)…"
+echo "==> [7/10] Build frontendu (Vite → dist/client)…"
 cd "$APP_DIR"
 npm run build
 
@@ -41,9 +41,10 @@ sudo cp "$NGINX_CONF" /etc/nginx/sites-available/purrepets
 sudo ln -sf /etc/nginx/sites-available/purrepets /etc/nginx/sites-enabled/purrepets
 sudo nginx -t && sudo systemctl reload nginx
 
-echo "==> [9/10] PM2: restart z --update-env…"
-pm2 restart purrepets-backend --update-env || pm2 start "$BACKEND/ecosystem.config.cjs" --only purrepets-backend
-pm2 restart purrepets-frontend --update-env || pm2 start "$APP_DIR/ecosystem.config.cjs" --only purrepets-frontend
+echo "==> [9/10] PM2: startOrReload z --update-env (serwer statyczny SPA)…"
+pm2 delete purrepets-frontend 2>/dev/null || true   # czyści ad-hoc procesy (vite preview / server-static)
+pm2 delete purrepets-backend 2>/dev/null || true
+pm2 startOrReload "$APP_DIR/ecosystem.config.cjs" --update-env
 pm2 save
 
 echo "==> [10/10] Triple-Check (Moduł 6)…"

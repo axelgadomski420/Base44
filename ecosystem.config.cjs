@@ -1,4 +1,4 @@
-// PURRE PETS — PM2 (Moduł 1). Restart z env: pm2 restart purrepets-backend --update-env
+// PURRE PETS — PM2. Restart z env: pm2 startOrReload ecosystem.config.cjs --update-env
 const path = require('node:path');
 
 const APP_DIR = '/home/ubuntu/Base44';
@@ -17,7 +17,7 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 2000,
       kill_timeout: 8000,
-      max_memory_restart: '600M',  // anty-wyciek pamięci
+      max_memory_restart: '600M',
       time: true,
       out_file: path.join(LOG_DIR, 'backend-out.log'),
       error_file: path.join(LOG_DIR, 'backend-error.log'),
@@ -42,16 +42,15 @@ module.exports = {
     },
     {
       name: 'purrepets-frontend',
-      script: 'npm',
-      args: 'run preview -- --host 127.0.0.1 --port 3000',
+      script: 'scripts/server-static.js',   // produkcyjny serwer SPA (dist/client)
       cwd: APP_DIR,
       exec_mode: 'fork',
       autorestart: true,
       max_restarts: 20,
       min_uptime: '10s',
       restart_delay: 2000,
-      kill_timeout: 8000,
-      max_memory_restart: '400M',
+      kill_timeout: 5000,
+      max_memory_restart: '300M',
       time: true,
       out_file: path.join(LOG_DIR, 'frontend-out.log'),
       error_file: path.join(LOG_DIR, 'frontend-error.log'),
@@ -60,8 +59,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
         HOST: '127.0.0.1',
-        VITE_API_URL: '',
-        VITE_BASE44_APP_BASE_URL: 'https://purrepets.pl'
+        DIST_DIR: path.join(APP_DIR, 'dist', 'client')
       }
     }
   ]
