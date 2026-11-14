@@ -3,8 +3,11 @@ package com.purre.pets.ads;
 import com.purre.pets.common.ApiException;
 import com.purre.pets.coins.CoinReason;
 import com.purre.pets.coins.CoinService;
+import com.purre.pets.user.User;
+import com.purre.pets.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * System reklam: sponsorowane ogłoszenia hodowców (PURRE Coins), partnerzy, sloty AdSense.
  * Zasady: nie zasłaniają treści, oznaczone „Sponsorowane", rotacja 1 na 5–7 interakcji (capping po stronie UI),
- * wyłączenie za PURRE Premium (faza 2). Zgodność RODO: bez profilowania, impression anonimowy opcjonalnie.
+ * wyłączone dla PURRE Premium. Zgodność RODO: bez profilowania, impression anonimowy opcjonalnie.
  */
 @Slf4j
 @Service
@@ -28,6 +31,7 @@ public class AdService {
     private final AdCampaignRepository campaignRepository;
     private final AdImpressionRepository impressionRepository;
     private final CoinService coinService;
+    private final UserRepository userRepository;
     private final AtomicLong rotation = new AtomicLong(0);
 
     @Transactional
@@ -70,9 +74,15 @@ public class AdService {
                 .build());
     }
 
-    /** Rotacja: kolejna aktywna kampania; capping częstotliwości wymusza UI (1 na 5–7 interakcji). */
     @Transactional
     public AdDto serve(String placement, Long userId) {
+        // PURRE Premium — bez reklam
+        if (userId != null) {
+            boolean premium = userRepository.findById(userId)
+                    .map(u -> u.getPremiumUntil() != null && u.getPremiumUntil().isAfter(Instant.now()))
+                    .orElse(false);
+            if (premium) return null;
+        }
         List<AdCampaign> active = campaignRepository
                 .findByActiveTrueAndActiveFromBeforeAndActiveUntilAfter(Instant.now(), Instant.now());
         if (active.isEmpty()) return null;
@@ -87,6 +97,19 @@ public class AdService {
     @Transactional(readOnly = true)
     public List<AdCampaign> mine(Long advertiserId) {
         return campaignRepository.findByAdvertiserIdOrderByCreatedAtDesc(advertiserId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdCampaign> listAll() {
+        return campaignRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    @Transactional
+    public AdCampaign setActive(Long campaignId, boolean active) {
+        AdCampaign c = campaignRepository.findById(campaignId)
+                .orElseThrow(() -> ApiException.notFound("Kampania nie istnieje."));
+        c.setActive(active);
+        return campaignRepository.save(c);
     }
 
     public record AdDto(Long id, String title, String imageUrl, String targetUrl, String type) {

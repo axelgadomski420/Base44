@@ -18,7 +18,7 @@ public class AdController {
 
     private final AdService adService;
 
-    /** Publiczny endpoint rotacji reklam (placement: GAME_INTERSTITIAL | HOLOFEED | DISCOVER | BREEDER_PANEL | FOOTER). */
+    /** Publiczny endpoint rotacji reklam (placement: GAME_INTERSTITIAL | HOLOFEED | DISCOVER | BREEDER_PANEL | FOOTER). Premium → null. */
     @GetMapping("/serve")
     public AdDto serve(@RequestParam String placement,
                        @AuthenticationPrincipal(required = false) UserPrincipal principal) {
@@ -40,10 +40,9 @@ public class AdController {
 
     @GetMapping("/mine")
     @PreAuthorize("hasRole('BREEDER')")
-    public List<Object> mine(@AuthenticationPrincipal UserPrincipal principal) {
+    public List<AdDto> mine(@AuthenticationPrincipal UserPrincipal principal) {
         return adService.mine(principal.id()).stream()
                 .map(c -> new AdDto(c.getId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(), c.getType().name()))
-                .map(o -> (Object) o)
                 .toList();
     }
 
@@ -56,5 +55,25 @@ public class AdController {
     public AdDto createManaged(@AuthenticationPrincipal UserPrincipal admin, @RequestBody CreateManagedRequest req) {
         AdCampaign.AdType type = AdCampaign.AdType.valueOf(req.type().toUpperCase());
         return AdDto.from(adService.createManaged(admin.id(), req.title(), req.imageUrl(), req.targetUrl(), type, req.days()));
+    }
+
+    public record CampaignDto(Long id, Long advertiserId, String title, String imageUrl, String targetUrl,
+                              String type, Integer priceCoins, boolean active, Long impressions,
+                              java.time.Instant activeUntil) {}
+
+    @GetMapping("/managed/list")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<CampaignDto> listAll() {
+        return adService.listAll().stream().map(c -> new CampaignDto(
+                c.getId(), c.getAdvertiserId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(),
+                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getActiveUntil())).toList();
+    }
+
+    @PostMapping("/managed/{id}/toggle")
+    @PreAuthorize("hasRole('ADMIN')")
+    public CampaignDto toggle(@PathVariable Long id, @RequestBody java.util.Map<String, Boolean> body) {
+        var c = adService.setActive(id, Boolean.TRUE.equals(body.get("active")));
+        return new CampaignDto(c.getId(), c.getAdvertiserId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(),
+                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getActiveUntil());
     }
 }
