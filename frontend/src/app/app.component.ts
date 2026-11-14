@@ -1,15 +1,17 @@
 import { Component, OnInit } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { AdSlotComponent } from './core/ad-slot.component';
 import { I18nService } from './core/i18n.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AdSlotComponent],
   template: `
     <div class="min-h-screen pb-20">
       <router-outlet />
+      <purre-ad-slot placement="FOOTER" class="block mx-auto max-w-2xl px-4 mb-2" />
       <nav class="fixed bottom-0 inset-x-0 z-40 purre-card border-t" style="border-radius: 1.25rem 1.25rem 0 0;">
         <div class="mx-auto max-w-2xl grid grid-cols-6 text-center text-[11px]">
           <a routerLink="/discover" routerLinkActive="font-bold" class="py-3" style="color: var(--muted)">🐾<br>{{ i18n.t('nav.discover') }}</a>

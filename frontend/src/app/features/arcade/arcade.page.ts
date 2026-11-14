@@ -1,6 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { NgComponentOutlet } from '@angular/common';
 import { ApiService, ApiError } from '../../core/api.service';
+import { AdSlotComponent } from '../../core/ad-slot.component';
 import { Game2048Component } from './game-2048';
 import { GameMemoryComponent } from './game-memory';
 import { GameQuizComponent } from './game-quiz';
@@ -23,7 +24,7 @@ interface DailyResult { coins: number; streak: number; balance: number; }
 @Component({
   selector: 'purre-arcade',
   standalone: true,
-  imports: [NgComponentOutlet, Game2048Component, GameMemoryComponent, GameQuizComponent, GameSnakeComponent,
+  imports: [NgComponentOutlet, AdSlotComponent, Game2048Component, GameMemoryComponent, GameQuizComponent, GameSnakeComponent,
     GameTetrisComponent, GameFlappyComponent, GameRunnerComponent, GameMatch3Component, GameWordleComponent,
     GameTriviaComponent, GameColoringComponent, GamePuzzleComponent, GameBubbleComponent, GameHexComponent, GameJumpComponent],
   template: `
@@ -32,6 +33,8 @@ interface DailyResult { coins: number; streak: number; balance: number; }
       <h1 class="text-2xl font-extrabold">🎮 PURRE Arcade</h1>
       <span class="purre-badge">XP: {{ xp() }}</span>
     </header>
+
+    <purre-ad-slot placement="GAME_INTERSTITIAL" [everyN]="3" class="block" />
 
     <button class="purre-card p-4 w-full text-left" (click)="claimDaily()" [disabled]="claiming()">
       <p class="font-bold">🎁 Dzienny bonus — 20 🪙</p>

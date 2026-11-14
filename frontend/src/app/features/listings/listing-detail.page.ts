@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/api.service';
+import { AdSlotComponent } from '../../core/ad-slot.component';
 import { I18nService } from '../../core/i18n.service';
 
 interface ListingDto {
@@ -15,7 +16,7 @@ interface ListingDto {
 @Component({
   selector: 'purre-listing-detail',
   standalone: true,
-  imports: [RouterLink, DecimalPipe, FormsModule],
+  imports: [RouterLink, DecimalPipe, FormsModule, AdSlotComponent],
   template: `
   @if (listing(); as l) {
     <article class="pb-24">
@@ -56,6 +57,7 @@ interface ListingDto {
         <div class="flex gap-2 mt-2">
           <a [routerLink]="['/messenger']" [queryParams]="{ to: l.breederId }" class="purre-btn flex-1 text-center">💬 Napisz do hodowcy</a>
         </div>
+        <purre-ad-slot placement="BREEDER_PANEL" class="block mt-3" />
       </div>
     </article>
 

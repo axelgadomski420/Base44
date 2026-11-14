@@ -10,6 +10,7 @@ export const routes: Routes = [
   { path: 'feed', loadComponent: () => import('./features/feed/feed.page').then(m => m.FeedPage) },
   { path: 'listing/:id', loadComponent: () => import('./features/listings/listing-detail.page').then(m => m.ListingDetailPage) },
   { path: 'add', canActivate: [breederGuard], loadComponent: () => import('./features/listings/add-listing.page').then(m => m.AddListingPage) },
+  { path: 'my-ads', canActivate: [breederGuard], loadComponent: () => import('./features/ads/breeder-ads.page').then(m => m.BreederAdsPage) },
   { path: 'messenger', canActivate: [authGuard], loadComponent: () => import('./features/messenger/messenger.page').then(m => m.MessengerPage) },
   { path: 'arcade', loadComponent: () => import('./features/arcade/arcade.page').then(m => m.ArcadePage) },
   { path: 'wallet', canActivate: [authGuard], loadComponent: () => import('./features/wallet/wallet.page').then(m => m.WalletPage) },

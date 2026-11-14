@@ -1,17 +1,18 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { AdSlotComponent } from '../../core/ad-slot.component';
 
 interface ListingDto {
   id: number; title: string; breed?: string; city?: string; breederId: number; listingType?: string;
   media: { id: number; mediaType: string; url: string; cover: boolean }[];
 }
 
-/** HoloFeed (faza 3): pionowy feed wideo z ogloszen — wzorzec TikTok. */
+/** HoloFeed (faza 3): pionowy feed wideo z ogloszen — wzorzec TikTok. Od 0.3.1 z slotem reklam HOLOFEED. */
 @Component({
   selector: 'purre-feed',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, AdSlotComponent],
   template: `
   <div class="h-[100dvh] overflow-y-auto snap-y snap-mandatory">
     @for (item of items(); track item.id) {
@@ -31,6 +32,11 @@ interface ListingDto {
           </div>
           <p class="absolute top-4 right-5 text-white/60 text-xs">HoloFeed</p>
         </section>
+      }
+      @if (videos(item).length > 0 && $index % 4 === 3) {
+        <div class="snap-start flex justify-center py-6 px-4" style="background: rgba(0,0,0,0.85)">
+          <purre-ad-slot placement="HOLOFEED" class="w-full max-w-md" />
+        </div>
       }
     } @empty {
       <div class="h-[100dvh] flex flex-col items-center justify-center gap-2">

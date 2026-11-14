@@ -1,5 +1,5 @@
 import { Component, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ApiService, ApiError } from '../../core/api.service';
 import { I18nService } from '../../core/i18n.service';
@@ -9,7 +9,7 @@ interface UploadedMedia { url: string; mediaType: 'IMAGE' | 'VIDEO'; }
 @Component({
   selector: 'purre-add-listing',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
   <div class="px-5 pt-6 pb-24 max-w-2xl mx-auto space-y-4">
     <h1 class="text-2xl font-extrabold">{{ i18n.t('listing.add') }}</h1>
@@ -70,6 +70,7 @@ interface UploadedMedia { url: string; mediaType: 'IMAGE' | 'VIDEO'; }
         </div>
       }
       <button class="purre-btn w-full" [disabled]="busy() || uploading()">{{ i18n.t('listing.publish') }}</button>
+      <a routerLink="/my-ads" class="purre-badge block text-center mt-2">📣 Promuj — reklama sponsorowana (1 dzień 50 🪙 / 7 dni 200 🪙)</a>
     </form>
   </div>
   `
