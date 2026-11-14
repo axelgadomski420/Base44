@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +21,7 @@ public class ListingController {
 
     private final ListingService listingService;
 
+    /** 0.4.0: filtry ceny + sortowanie (NEWEST / PRICE_ASC / PRICE_DESC / DISTANCE). */
     @GetMapping
     public List<ListingDto> nearby(@RequestParam double lat,
                                    @RequestParam double lng,
@@ -28,9 +30,19 @@ public class ListingController {
                                    @RequestParam(required = false) String breed,
                                    @RequestParam(required = false) String city,
                                    @RequestParam(required = false) String listingType,
+                                   @RequestParam(required = false) BigDecimal minPrice,
+                                   @RequestParam(required = false) BigDecimal maxPrice,
+                                   @RequestParam(required = false) String sort,
                                    @RequestParam(defaultValue = "0") int page,
                                    @RequestParam(defaultValue = "24") int size) {
-        return listingService.nearby(lat, lng, radiusKm, species, breed, city, listingType, page, size);
+        return listingService.nearby(lat, lng, radiusKm, species, breed, city, listingType,
+                minPrice, maxPrice, sort, page, size);
+    }
+
+    /** 0.4.0: podpowiedzi wyszukiwarki w czasie rzeczywistym (debounce po stronie frontendu). */
+    @GetMapping("/suggest")
+    public Map<String, List<String>> suggest(@RequestParam("q") String q) {
+        return listingService.suggest(q);
     }
 
     /** HoloFeed — pionowy feed wideo (faza 3). */

@@ -21,7 +21,8 @@ public record GameRule(String id, int maxScore, int minDurationSeconds, boolean 
             Map.entry("PURRE_TRIVIA", new GameRule("PURRE_TRIVIA", 50, 10, true)),
             Map.entry("PURRE_COLORING", new GameRule("PURRE_COLORING", 1000, 10, false)),
             Map.entry("PURRE_JUMP", new GameRule("PURRE_JUMP", 50000, 10, false)),
-            Map.entry("PURRE_BUBBLE", new GameRule("PURRE_BUBBLE", 100000, 15, false))
+            Map.entry("PURRE_BUBBLE", new GameRule("PURRE_BUBBLE", 100000, 15, false)),
+            Map.entry("PURRE_WHACK", new GameRule("PURRE_WHACK", 30000, 10, false))
     );
 
     public static Optional<GameRule> byId(String id) {

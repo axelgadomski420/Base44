@@ -15,10 +15,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -155,28 +157,54 @@ public class ListingService {
         return ListingDto.from(listing, mediaOf(id), null);
     }
 
+    /**
+     * 0.4.0: sort — NEWEST (domyślnie), PRICE_ASC, PRICE_DESC, DISTANCE.
+     * Wyróżnione ogłoszenia zawsze na początku.
+     */
     @Transactional(readOnly = true)
     public List<ListingDto> nearby(double lat, double lng, double radiusKm, String species, String breed, String city,
-                                   String listingType, int page, int size) {
+                                   String listingType, BigDecimal minPrice, BigDecimal maxPrice, String sort,
+                                   int page, int size) {
         Pageable pageable = PageRequest.of(page, Math.min(size, 50));
-        return listingRepository.searchNearby(lat, lng, radiusKm,
+        List<ListingDto> dtos = listingRepository.searchNearby(lat, lng, radiusKm,
                         species == null || species.isBlank() ? null : species.toUpperCase(),
                         breed, city,
                         listingType == null || listingType.isBlank() ? null : listingType.toUpperCase(),
-                        pageable)
+                        minPrice, maxPrice, pageable)
                 .stream()
                 .map(row -> {
                     Listing l = listingRepository.findById(row.getId()).orElse(null);
                     if (l == null) return null;
-                    List<ListingMedia> media = mediaOf(l.getId());
-                    // wyróżnione ogłoszenia na początku listy
-                    return ListingDto.from(l, media, row.getDistanceKm());
+                    return ListingDto.from(l, mediaOf(l.getId()), row.getDistanceKm());
                 })
                 .filter(java.util.Objects::nonNull)
-                .sorted(Comparator
-                        .comparing((ListingDto d) -> d.featuredUntil() != null && d.featuredUntil().isAfter(Instant.now()) ? 0 : 1)
-                        .thenComparing(d -> d.distanceKm() == null ? Double.MAX_VALUE : d.distanceKm().doubleValue()))
                 .toList();
+
+        Comparator<ListingDto> featured = Comparator.comparing(
+                (ListingDto d) -> d.featuredUntil() != null && d.featuredUntil().isAfter(Instant.now()) ? 0 : 1);
+        String mode = sort == null ? "NEWEST" : sort.trim().toUpperCase();
+        Comparator<ListingDto> rest = switch (mode) {
+            case "PRICE_ASC" -> Comparator.comparing(ListingDto::price,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            case "PRICE_DESC" -> Comparator.comparing(ListingDto::price,
+                    Comparator.nullsLast(Comparator.reverseOrder()));
+            case "NEWEST" -> Comparator.comparing(ListingDto::createdAt,
+                    Comparator.nullsLast(Comparator.reverseOrder()));
+            default -> Comparator.comparing(d -> d.distanceKm() == null ? Double.MAX_VALUE : d.distanceKm().doubleValue());
+        };
+        return dtos.stream().sorted(featured.thenComparing(rest)).toList();
+    }
+
+    /** 0.4.0: podpowiedzi wyszukiwarki (rasy + miasta) w czasie rzeczywistym. */
+    @Transactional(readOnly = true)
+    public Map<String, List<String>> suggest(String q) {
+        String term = q == null ? "" : q.trim();
+        if (term.length() < 2) {
+            return Map.of("breeds", List.of(), "cities", List.of());
+        }
+        return Map.of(
+                "breeds", listingRepository.suggestBreeds(term),
+                "cities", listingRepository.suggestCities(term));
     }
 
     /** HoloFeed (faza 3): pionowy feed wideo z ogłoszeń. */

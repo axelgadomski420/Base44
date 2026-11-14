@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface ListingRepository extends JpaRepository<Listing, Long> {
@@ -15,7 +16,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
     long countByBreederIdAndStatus(Long breederId, ListingStatus status);
 
     /**
-     * Wyszukiwanie po odległości — wzorzec z nearby-marketplace: Haversine w czystym SQL (MySQL, bez PostGIS).
+     * Wyszukiwanie po odległości — Haversine w czystym SQL (MySQL, bez PostGIS).
+     * 0.4.0: filtry ceny (min/max) — sortowanie po stronie serwisu.
      */
     @Query(value = """
             SELECT l.*,
@@ -31,6 +33,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
               AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
               AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
               AND (:listingType IS NULL OR l.listing_type = :listingType)
+              AND (:minPrice IS NULL OR l.price >= :minPrice)
+              AND (:maxPrice IS NULL OR l.price <= :maxPrice)
             HAVING distance_km <= :radiusKm
             ORDER BY distance_km ASC
             """,
@@ -49,6 +53,8 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                   AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
                   AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
                   AND (:listingType IS NULL OR l.listing_type = :listingType)
+                  AND (:minPrice IS NULL OR l.price >= :minPrice)
+                  AND (:maxPrice IS NULL OR l.price <= :maxPrice)
                 HAVING distance_km <= :radiusKm
             ) t
             """,
@@ -60,7 +66,29 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                                            @Param("breed") String breed,
                                            @Param("city") String city,
                                            @Param("listingType") String listingType,
+                                           @Param("minPrice") BigDecimal minPrice,
+                                           @Param("maxPrice") BigDecimal maxPrice,
                                            Pageable pageable);
+
+    /** 0.4.0: podpowiedzi ras w czasie rzeczywistym. */
+    @Query(value = """
+            SELECT DISTINCT l.breed FROM listings l
+            WHERE l.status = 'ACTIVE' AND l.breed IS NOT NULL
+              AND LOWER(l.breed) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY l.breed
+            LIMIT 8
+            """, nativeQuery = true)
+    List<String> suggestBreeds(@Param("q") String q);
+
+    /** 0.4.0: podpowiedzi miast w czasie rzeczywistym. */
+    @Query(value = """
+            SELECT DISTINCT l.city FROM listings l
+            WHERE l.status = 'ACTIVE' AND l.city IS NOT NULL
+              AND LOWER(l.city) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY l.city
+            LIMIT 8
+            """, nativeQuery = true)
+    List<String> suggestCities(@Param("q") String q);
 
     /** HoloFeed (faza 3): ogłoszenia z wideo, wyróżnione najpierw. */
     @Query(value = """

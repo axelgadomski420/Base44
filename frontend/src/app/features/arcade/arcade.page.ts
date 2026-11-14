@@ -17,6 +17,7 @@ import { GamePuzzleComponent } from './game-puzzle';
 import { GameBubbleComponent } from './game-bubble';
 import { GameHexComponent } from './game-hex';
 import { GameJumpComponent } from './game-jump';
+import { GameWhackComponent } from './game-whack';
 
 interface LeaderRow { rank: number; userId: number; displayName: string; totalScore: number; weeklyBonus: boolean; }
 interface DailyResult { coins: number; streak: number; balance: number; }
@@ -26,7 +27,8 @@ interface DailyResult { coins: number; streak: number; balance: number; }
   standalone: true,
   imports: [NgComponentOutlet, AdSlotComponent, Game2048Component, GameMemoryComponent, GameQuizComponent, GameSnakeComponent,
     GameTetrisComponent, GameFlappyComponent, GameRunnerComponent, GameMatch3Component, GameWordleComponent,
-    GameTriviaComponent, GameColoringComponent, GamePuzzleComponent, GameBubbleComponent, GameHexComponent, GameJumpComponent],
+    GameTriviaComponent, GameColoringComponent, GamePuzzleComponent, GameBubbleComponent, GameHexComponent, GameJumpComponent,
+    GameWhackComponent],
   template: `
   <div class="px-5 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
     <header class="flex items-center justify-between">
@@ -69,14 +71,15 @@ export class ArcadePage implements OnInit {
     '2048': Game2048Component, memory: GameMemoryComponent, quiz: GameQuizComponent, snake: GameSnakeComponent,
     tetris: GameTetrisComponent, flappy: GameFlappyComponent, runner: GameRunnerComponent, match3: GameMatch3Component,
     wordle: GameWordleComponent, trivia: GameTriviaComponent, coloring: GameColoringComponent, puzzle: GamePuzzleComponent,
-    bubble: GameBubbleComponent, hex: GameHexComponent, jump: GameJumpComponent
+    bubble: GameBubbleComponent, hex: GameHexComponent, jump: GameJumpComponent, whack: GameWhackComponent
   };
   readonly games = [
     { id: '2048', label: '🐱 2048' }, { id: 'memory', label: '🧩 Memory' }, { id: 'quiz', label: '❓ Quiz' },
     { id: 'snake', label: '🐍 Snake' }, { id: 'tetris', label: '🧱 Tetris' }, { id: 'flappy', label: '🐦 Flappy' },
     { id: 'runner', label: '🏃 Runner' }, { id: 'match3', label: '💎 Match-3' }, { id: 'wordle', label: '🔤 Wordle' },
     { id: 'trivia', label: '🧠 Trivia' }, { id: 'coloring', label: '🎨 Coloring' }, { id: 'puzzle', label: '🖼️ Puzzle' },
-    { id: 'bubble', label: '🫧 Bubble' }, { id: 'hex', label: '⬡ Hex' }, { id: 'jump', label: '🦘 Jump' }
+    { id: 'bubble', label: '🫧 Bubble' }, { id: 'hex', label: '⬡ Hex' }, { id: 'jump', label: '🦘 Jump' },
+    { id: 'whack', label: '🔨 Whack' }
   ];
   readonly current = signal<string>('2048');
   readonly leaderboard = signal<LeaderRow[]>([]);
