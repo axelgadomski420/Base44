@@ -1,31 +1,31 @@
-import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import express from "express";
+import fetch from "node-fetch";
 
-const prisma = new PrismaClient();
-const aiRouter = Router();
+const router = express.Router();
 
-aiRouter.post('/chat', async (req, res) => {
+router.post("/chat", async (req, res) => {
   try {
-    const { prompt, userId } = req.body;
+    const { prompt } = req.body;
     if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
-    }
-    
-    // Symulacja / integracja odpowiedzi LLM dla asystenta Purre Pets
-    const aiResponse = `Purre Pets AI Assistant: Otrzymałem Twoje zapytanie dotyczące "${prompt}". Dbaj o swojego zwierzaka najlepiej jak potrafisz!`;
-
-    if (userId) {
-      await prisma.aILog.create({
-        data: { prompt, response: aiResponse, userId }
-      }).catch(() => {}); // Ignorujemy błąd zapisu logu, jeśli userId jest tymczasowe
+      return res.status(400).json({ error: "Brak promptu" });
     }
 
-    return res.json({ result: aiResponse });
+    const response = await fetch("http://127.0.0.1:11434/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "speakleash/bielik-7b-instruct-v0.1:Q4_K_M",
+        prompt: prompt,
+        stream: false
+      })
+    });
+
+    const data = await response.json();
+    res.json({ response: data.response });
   } catch (err) {
-    console.error('AI LLM error:', err);
-    return res.status(500).json({ error: 'AI processing failed' });
+    console.error("Błąd LLM:", err);
+    res.status(500).json({ error: "Błąd komunikacji z modelem AI" });
   }
 });
 
-export { aiRouter };
-export default aiRouter;
+export default router;

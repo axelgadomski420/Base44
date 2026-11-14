@@ -1,3 +1,4 @@
+import aiRoutes from "./routes/ai.routes.js";
 import express from "express";
 import cors from "cors";
 import path from "node:path";
@@ -19,11 +20,13 @@ export function createApp() {
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
 
-  app.use(
+  app.use("/api/ai", aiRoutes);
+app.use(
     cors()
   );
 
-  app.use(
+  app.use("/api/ai", aiRoutes);
+app.use(
     express.json({
       limit: "2mb",
       verify: (req, _res, buf) => {
@@ -33,26 +36,39 @@ export function createApp() {
   );
 
   // Uploaded files are served publicly (UploadPublicFile returns public URLs).
-  app.use(
+  app.use("/api/ai", aiRoutes);
+app.use(
     "/uploads",
     express.static(path.resolve(config.uploadDir), { fallthrough: false, maxAge: "30d", immutable: true })
   );
 
   app.get("/api/health", (req, res) => res.json({ ok: true, now: new Date().toISOString() }));
 
-  app.use("/api/auth", authRouter);
-  app.use("/api/entities", entitiesRouter);
-  app.use("/api/uploads", uploadsRouter);
-  app.use("/api/games", gamesRouter);
-  app.use("/api/rewards", rewardsRouter);
-  app.use("/api/listings", listingsRouter);
-  app.use("/api/assistant", assistantRouter);
-  app.use("/api/stripe", stripeRouter);
-  app.use("/api/social", socialRouter);
-  app.use("/api/admin", adminRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/auth", authRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/entities", entitiesRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/uploads", uploadsRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/games", gamesRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/rewards", rewardsRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/listings", listingsRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/assistant", assistantRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/stripe", stripeRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/social", socialRouter);
+  app.use("/api/ai", aiRoutes);
+app.use("/api/admin", adminRouter);
 
-  app.use(notFoundHandler);
-  app.use(errorHandler);
+  app.use("/api/ai", aiRoutes);
+app.use(notFoundHandler);
+  app.use("/api/ai", aiRoutes);
+app.use(errorHandler);
 
   return app;
 }
