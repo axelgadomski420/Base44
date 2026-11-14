@@ -94,7 +94,7 @@ function ArcadePage() {
 
         <section className="mt-6">
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Gry</h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {GAMES.map((game) => (
               <Link
                 key={game.id}

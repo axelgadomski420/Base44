@@ -10,6 +10,7 @@ import { rewardsRouter } from "./routes/rewards.routes.js";
 import { listingsRouter } from "./routes/listings.routes.js";
 import { assistantRouter } from "./routes/assistant.routes.js";
 import { stripeRouter } from "./routes/stripe.routes.js";
+import { socialRouter, adminRouter } from "./routes/social.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 export function createApp() {
@@ -30,7 +31,14 @@ export function createApp() {
     })
   );
 
-  app.use(express.json({ limit: "2mb" }));
+  app.use(
+    express.json({
+      limit: "2mb",
+      verify: (req, _res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
 
   // Uploaded files are served publicly (UploadPublicFile returns public URLs).
   app.use(
@@ -48,6 +56,8 @@ export function createApp() {
   app.use("/api/listings", listingsRouter);
   app.use("/api/assistant", assistantRouter);
   app.use("/api/stripe", stripeRouter);
+  app.use("/api/social", socialRouter);
+  app.use("/api/admin", adminRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

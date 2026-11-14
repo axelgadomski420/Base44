@@ -9,7 +9,7 @@ import { GAME_CAPS, coinReward, levelFor, dailyGame, todayKey, dailyTarget, DAIL
 export const gamesRouter = Router();
 
 const submitSchema = z.object({
-  game: z.enum(["2048", "memory", "quiz", "puzzle"]),
+  game: z.enum(["2048", "memory", "quiz", "puzzle", "snake", "reaction", "whack", "slide"]),
   score: z.number().int().min(0).max(100000),
   duration_ms: z.number().int().min(1200).max(3_600_000),
 });

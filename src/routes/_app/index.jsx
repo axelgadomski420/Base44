@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Film, Plus } from "lucide-react";
+import { CalendarDays, Film, Plus, ShieldCheck, Users } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import StoryRow from "@/components/feed/StoryRow";
 import PostCard from "@/components/feed/PostCard";
@@ -126,6 +126,24 @@ function DiscoverPage() {
             >
               <Plus className="h-3.5 w-3.5" /> {t("nav.add")}
             </button>
+          </div>
+
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+            {[
+              { to: "/events", label: "Wydarzenia", icon: CalendarDays },
+              { to: "/community", label: "Społeczność", icon: Users },
+              { to: "/video-editor", label: "Edytor", icon: Film },
+              { to: "/verify", label: "Weryfikacja", icon: ShieldCheck },
+            ].map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground"
+              >
+                <item.icon className="h-3.5 w-3.5" />
+                {item.label}
+              </Link>
+            ))}
           </div>
 
           <div className="mt-6">

@@ -123,6 +123,47 @@ export const ENTITIES = {
     publicRead: true,
     write: "serviceOnly",
   },
+  Event: {
+    delegate: "event",
+    publicRead: true,
+    readScope: (user, admin) =>
+      admin
+        ? {}
+        : user
+          ? { OR: [{ status: "published" }, { created_by_id: user.id }] }
+          : { status: "published" },
+    write: "ownerOrAdmin",
+    forcedCreate: (user) => ({ organizer_id: user.id, status: "published" }),
+  },
+  EventTicket: {
+    delegate: "eventTicket",
+    authRead: true,
+    readScope: (user, admin) => (admin ? {} : { user_id: user.id }),
+    write: "serviceOnly",
+  },
+  Group: {
+    delegate: "group",
+    publicRead: true,
+    write: "ownerOrAdmin",
+  },
+  GroupMember: {
+    delegate: "groupMember",
+    authRead: true,
+    readScope: (user, admin) => (admin ? {} : { user_id: user.id }),
+    write: "serviceOnly",
+  },
+  VerificationRequest: {
+    delegate: "verificationRequest",
+    authRead: true,
+    readScope: (user, admin) => (admin ? {} : { user_id: user.id }),
+    write: "serviceOnly",
+  },
+  CoinPurchase: {
+    delegate: "coinPurchase",
+    authRead: true,
+    readScope: (user, admin) => (admin ? {} : { user_id: user.id }),
+    write: "serviceOnly",
+  },
 };
 
 export function getEntity(name) {

@@ -88,7 +88,9 @@ const ENTITY_PATHS = {
   GameScore: "GameScore",
   Event: "Event",
   Group: "Group",
+  EventTicket: "EventTicket",
   VerificationRequest: "VerificationRequest",
+  CoinPurchase: "CoinPurchase",
 };
 
 function pageOptions(opts = {}) {
@@ -204,11 +206,37 @@ export const functions = {
   askAssistant: (data) => request("/api/assistant/ask", { method: "POST", body: data }),
 };
 
+export const social = {
+  events: (city) => request(`/api/social/events${city ? `?city=${encodeURIComponent(city)}` : ""}`),
+  createEvent: (body) => request("/api/social/events", { method: "POST", body }),
+  buyTicket: (id) => request(`/api/social/events/${id}/ticket`, { method: "POST", body: {} }),
+  groups: (type) => request(`/api/social/groups${type && type !== "all" ? `?type=${encodeURIComponent(type)}` : ""}`),
+  createGroup: (body) => request("/api/social/groups", { method: "POST", body }),
+  joinGroup: (id) => request(`/api/social/groups/${id}/join`, { method: "POST", body: {} }),
+  leaveGroup: (id) => request(`/api/social/groups/${id}/leave`, { method: "POST", body: {} }),
+  myVerification: () => request("/api/social/verification/mine"),
+  submitVerification: (body) => request("/api/social/verification", { method: "POST", body }),
+};
+
+export const adminApi = {
+  overview: () => request("/api/admin/overview"),
+  reviewVerification: (id, body) => request(`/api/admin/verification/${id}`, { method: "POST", body }),
+  reviewListing: (id, body) => request(`/api/admin/listings/${id}`, { method: "POST", body }),
+};
+
+export const billing = {
+  packages: () => request("/api/stripe/packages"),
+  checkout: (packageId) => request("/api/stripe/create-checkout", { method: "POST", body: { package_id: packageId } }),
+};
+
 // ---------------------------------------------------------------- Public client
 
 export const base44 = {
   auth,
   functions,
+  social,
+  admin: adminApi,
+  billing,
   entities,
   integrations: {
     Core: {

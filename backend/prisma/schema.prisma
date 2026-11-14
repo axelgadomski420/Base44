@@ -252,6 +252,111 @@ model GameScore {
   @@map("game_scores")
 }
 
+model Event {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  location       String?
+  city           String?
+  lat            Float?
+  lng            Float?
+  start_date     DateTime
+  end_date       DateTime?
+  price_coins    Int       @default(0)
+  cover_url      String?
+  organizer_id   String?
+  organizer_name String?
+  status         String    @default("published") // "draft" | "published" | "cancelled"
+  created_by_id  String?
+  created_date   DateTime  @default(now())
+  updated_date   DateTime  @updatedAt
+
+  @@index([status, start_date])
+  @@index([city])
+  @@map("events")
+}
+
+model EventTicket {
+  id            String   @id @default(cuid())
+  event_id      String
+  user_id       String
+  user_name     String?
+  coins_paid    Int      @default(0)
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@unique([event_id, user_id])
+  @@index([user_id])
+  @@map("event_tickets")
+}
+
+model Group {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  type          String   @default("topic") // "breed" | "regional" | "topic"
+  city          String?
+  breed         String?
+  members_count Int      @default(1)
+  is_public     Boolean  @default(true)
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@index([type])
+  @@map("groups")
+}
+
+model GroupMember {
+  id            String   @id @default(cuid())
+  group_id      String
+  user_id       String
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@unique([group_id, user_id])
+  @@index([user_id])
+  @@map("group_members")
+}
+
+model VerificationRequest {
+  id            String   @id @default(cuid())
+  user_id       String
+  kennel_name   String
+  registry_no   String?
+  city          String?
+  species       String?
+  document_url  String?
+  note          String?
+  status        String   @default("pending") // "pending" | "approved" | "rejected"
+  reviewer_note String?
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@index([status])
+  @@index([user_id])
+  @@map("verification_requests")
+}
+
+model CoinPurchase {
+  id                String   @id @default(cuid())
+  user_id           String
+  package_id        String
+  coins             Int
+  amount            Int
+  currency          String   @default("pln")
+  stripe_session_id String   @unique
+  status            String   @default("paid")
+  created_date      DateTime @default(now())
+  updated_date      DateTime @updatedAt
+
+  @@index([user_id])
+  @@map("coin_purchases")
+}
+
 model OtpCode {
   id           String   @id @default(cuid())
   email        String

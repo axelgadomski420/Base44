@@ -33,4 +33,6 @@ export const config = {
         from: process.env.SMTP_FROM ?? "PURRE PETS <no-reply@purrepets.pl>",
       }
     : null,
+  stripeSecret: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
 };

@@ -71,8 +71,18 @@ base44 dev
 
 ## Status implementacji
 
-Wiele podstawowych funkcji (feed, listings, arcade, messaging, auth, wallet) jest już zaimplementowanych.  
-Trwają prace nad pełną zgodnością ze specyfikacją: edytor wideo, pełna weryfikacja hodowców, events, community groups, Stripe webhooks, AI service, admin panel, więcej gier.
+Działa: feed, ogłoszenia, messenger, portfel, 7 gier Arcade (2048, Memory, Quiz, Snake, Reflex, Whack, Slide), wydarzenia z biletami za Coins, grupy społeczności, wniosek o weryfikację hodowcy + kolejka admina, edytor wideo (trim, filtry, napis, okładka, eksport WebM) oraz pakiety Stripe.
+
+Po wdrożeniu backendu uruchom migrację schematu:
+
+```bash
+cd backend
+npx prisma db push
+# albo, jeśli trzymasz historię migracji:
+npx prisma migrate deploy
+```
+
+Stripe: ustaw `STRIPE_SECRET_KEY` i `STRIPE_WEBHOOK_SECRET`, webhook na `POST /api/stripe/webhook`. Bez kluczy sklep pokazuje pakiety, ale nie otwiera płatności.
 
 ---
 

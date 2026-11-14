@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n";
 import { REWARDS } from "@/lib/rewards";
 import { redeemReward } from "@/lib/server-fns";
 import { formatNumber } from "@/lib/format";
+import CoinShop from "@/components/rewards/CoinShop";
 
 export const Route = createFileRoute("/_app/rewards")({
   ssr: false,
@@ -96,6 +97,8 @@ function RewardsPage() {
             {t("common.coins")}
           </span>
         </div>
+
+        <CoinShop />
 
         {listings.length > 0 && (
           <label className="mt-4 block">

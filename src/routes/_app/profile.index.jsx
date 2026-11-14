@@ -123,6 +123,9 @@ function OwnProfilePage() {
                 <b className="text-foreground">{pets.length}</b> {t("profile.pets")}
               </span>
             </div>
+            <Link to="/verify" className="mt-2 inline-block text-[10px] uppercase tracking-widest text-aura">
+              {profile?.verified ? "Odznaka hodowcy" : "Zweryfikuj hodowlę"} →
+            </Link>
           </div>
           <div className="flex flex-col items-end gap-2">
             <ThemeLangMenu />

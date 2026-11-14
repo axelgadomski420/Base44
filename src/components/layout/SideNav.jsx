@@ -1,10 +1,17 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Coins, Sparkles } from "lucide-react";
+import { CalendarDays, Clapperboard, Coins, ShieldCheck, Sparkles, Users } from "lucide-react";
 import Brand from "@/components/common/Brand";
 import ThemeLangMenu from "@/components/layout/ThemeLangMenu";
 import { NAV_ITEMS } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+
+const MORE = [
+  { to: "/events", label: "Wydarzenia", icon: CalendarDays },
+  { to: "/community", label: "Społeczność", icon: Users },
+  { to: "/video-editor", label: "Edytor", icon: Clapperboard },
+  { to: "/verify", label: "Weryfikacja", icon: ShieldCheck },
+];
 
 export default function SideNav({ coins = 0, level = 1 }) {
   const navigate = useNavigate();
@@ -47,6 +54,27 @@ export default function SideNav({ coins = 0, level = 1 }) {
           );
         })}
       </nav>
+
+      <div className="mt-6 flex flex-col gap-1 border-t border-border/50 pt-4">
+        {MORE.map((item) => {
+          const Icon = item.icon;
+          const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
+          return (
+            <button
+              key={item.to}
+              type="button"
+              onClick={() => navigate({ to: item.to })}
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] transition",
+                active ? "bg-secondary/80 text-foreground" : "text-muted-foreground hover:bg-secondary/40 hover:text-foreground"
+              )}
+            >
+              <Icon className={cn("h-4 w-4", active && "text-aura")} />
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="mt-8 rounded-2xl border border-border/70 bg-gradient-to-br from-violet/15 via-card/60 to-aura/10 p-4">
         <div className="flex items-center justify-between">
