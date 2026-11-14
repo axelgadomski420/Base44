@@ -9,12 +9,12 @@ import { GAME_CAPS, coinReward, levelFor, dailyGame, todayKey, dailyTarget, DAIL
 export const gamesRouter = Router();
 
 const submitSchema = z.object({
-  game: z.enum(["2048", "memory", "quiz", "puzzle", "snake", "reaction", "whack", "slide"]),
+  game: z.enum(["2048", "memory", "quiz", "puzzle", "snake", "reaction", "whack", "slide", "tetris", "flappy", "match3", "wordle", "bubble"]),
   score: z.number().int().min(0).max(100000),
   duration_ms: z.number().int().min(1200).max(3_600_000),
 });
 
-// POST /api/games/submit â replaces the submitScore server function.
+// POST /api/games/submit — replaces the submitScore server function.
 // Validates the score, applies the 8-second anti-spam window, awards coins/xp
 // (including the daily bonus) and pushes the wallet update over Socket.IO.
 gamesRouter.post(
@@ -24,14 +24,14 @@ gamesRouter.post(
     const data = submitSchema.parse(req.body);
     const user = req.user;
 
-    if (data.score > GAME_CAPS[data.game]) throw badRequest("NieprawidÅowy wynik");
+    if (data.score > GAME_CAPS[data.game]) throw badRequest("Nieprawidłowy wynik");
 
     const recent = await prisma.gameScore.findFirst({
       where: { user_id: user.id, game: data.game },
       orderBy: { created_date: "desc" },
     });
     if (recent && Date.now() - new Date(recent.created_date).getTime() < 8000) {
-      throw tooMany("Zbyt szybkie zgÅoszenie wyniku");
+      throw tooMany("Zbyt szybkie zgłoszenie wyniku");
     }
 
     const wallet = await loadWallet(user.id);
