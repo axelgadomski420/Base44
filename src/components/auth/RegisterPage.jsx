@@ -45,7 +45,15 @@ export function RegisterPage() {
     }
     setBusy(true);
     try {
-      await base44.auth.register({ email, password });
+      const result = await base44.auth.register(email, password);
+      if (result?.access_token) {
+        base44.auth.setToken(result.access_token);
+        localStorage.setItem("purre:account_type", accountType);
+        window.location.href = `/onboarding${
+          returnTo && returnTo !== "/" ? `?returnTo=${encodeURIComponent(returnTo)}` : ""
+        }`;
+        return;
+      }
       setStep("otp");
     } catch (err) {
       setError(err.message || "Rejestracja nie powiodła się");
@@ -59,7 +67,7 @@ export function RegisterPage() {
     setError("");
     setBusy(true);
     try {
-      const result = await base44.auth.verifyOtp({ email, otpCode });
+      const result = await base44.auth.verifyOtp(email, otpCode);
       if (result?.mfa_required) {
         setMfaChallenge(result);
         return;

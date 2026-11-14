@@ -1,51 +1,27 @@
-import { base44 } from "@/api/base44Client";
-import { getAppParams } from "@/lib/app-params";
+// Simplified sign-in helpers for the self-hosted backend (replaces the Base44
+// platform MFA routes). The backend does not enable MFA, so login always returns
+// { access_token, user } and the MFA UI path stays dormant.
 
-const appId = () => getAppParams().appId;
-
-function authPath(suffix) {
-  if (!/^[a-f0-9]{24}$/i.test(appId())) throw new Error("Invalid app ID");
-  return `/api/apps/${appId()}/auth/${suffix}`;
-}
-
-async function post(suffix, body, token) {
-  const response = await fetch(authPath(suffix), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || result.detail || "Unable to sign in");
-  return result;
-}
+import base44 from "@/api/base44Client";
+import { safeReturnTo } from "@/lib/authReturnTo";
 
 export async function loginWithMfa(email, password) {
-  const result = await post("login", { email, password });
-  if (result.access_token) base44.auth.setToken(result.access_token);
-  return result;
+  // Same call/signature as before; the backend never returns mfa_required.
+  return base44.auth.loginWithPassword(email, password);
 }
 
-export async function continueMfa(result, returnTo) {
-  const encode = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  const verifier = encode(crypto.getRandomValues(new Uint8Array(32)));
-  const challenge = encode(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
-  const { code } = await post("mfa/handoff", { code_challenge: challenge }, result.mfa_session_token);
-  sessionStorage.setItem(`app-mfa-pkce:${appId()}`, verifier);
-  const url = new URL("/auth/mfa", window.location.origin);
-  url.search = new URLSearchParams({ app_id: appId(), mfa_code: code, from_url: returnTo });
-  window.location.assign(url.href);
+// MFA is disabled on the self-hosted backend: finishing sign-in is a plain redirect.
+export async function continueMfa(_result, returnTo) {
+  window.location.href = returnTo || safeReturnTo();
 }
 
-// provider: "google" | "microsoft" | "facebook" | "apple"
+// Social login is not configured on the self-hosted backend.
 export async function loginWithSocial(provider, returnTo) {
-  const response = await fetch(`/api/apps/public/login-info/by-id/${appId()}`);
-  if (!response.ok) throw new Error("Unable to load sign-in options");
-  const info = await response.json();
-  if (info.auth_config?.mfa_policy !== "required") return base44.auth.loginWithProvider(provider, returnTo);
-  const url = new URL("/auth/mfa", window.location.origin);
-  url.search = new URLSearchParams({ app_id: appId(), oauth_start: provider, from_url: returnTo });
-  window.location.assign(url.href);
+  if (provider === "google") {
+    window.location.assign(`/api/auth/google?returnTo=${encodeURIComponent(returnTo ?? window.location.href)}`);
+    return;
+  }
+  window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo ?? window.location.href)}`);
 }
 
 export function loginWithGoogle(returnTo) {

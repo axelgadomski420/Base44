@@ -125,7 +125,7 @@ export async function signInWithProvider(provider, returnTo, { manage = false } 
   const workspaceSso = provider === 'sso' && info.auth_config?.use_workspace_sso && info.organization_id;
   const path = provider === 'sso'
     ? (workspaceSso ? `/api/apps/${info.organization_id}/${appId()}/auth/sso/login` : `/api/apps/${appId()}/auth/sso/login`)
-    : `/api/apps/auth${provider === 'google' ? '' : `/${provider}`}/login`;
+    : (provider === 'google' ? `/api/auth/google?returnTo=${encodeURIComponent(returnTo ?? window.location.href)}` : `/api/apps/auth/${provider}/login`);
   const url = new URL(path, window.location.origin);
   url.search = new URLSearchParams({
     from_url: new URL(returnTo, window.location.origin).href,

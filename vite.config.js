@@ -13,6 +13,9 @@ const { dependencies } = JSON.parse(readFileSync(new URL("./package.json", impor
 const PREBUNDLE = Object.keys(dependencies).filter((name) => !NOT_PREBUNDLED.has(name));
 
 export default defineConfig({
+  server: {
+    allowedHosts: ["purrepets.pl", "www.purrepets.pl", "92.5.154.243"],
+  },
   optimizeDeps: { include: PREBUNDLE },
   environments: {
     ssr: {

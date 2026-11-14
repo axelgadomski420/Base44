@@ -105,7 +105,8 @@ authRouter.post(
     await prisma.wallet.create({
       data: { user_id: user.id, coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
     });
-    res.status(201).json(await issueOtp(user.email));
+    const verified = await prisma.user.update({ where: { id: user.id }, data: { email_verified: true } });
+    res.status(201).json({ access_token: signToken(verified), user: publicUser(verified) });
   })
 );
 
@@ -186,3 +187,60 @@ authRouter.get(
     });
   })
 );
+
+// --- Google OAuth ---
+authRouter.get("/google", async (req, res) => {
+  const crypto = await import("node:crypto");
+  const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+  const state = crypto.randomBytes(16).toString("hex");
+  const url = new URL("https://accounts.google.com/o/oauth2/auth");
+  url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("state", state);
+  url.searchParams.set("prompt", "select_account");
+  res.redirect(url.toString());
+});
+
+authRouter.get("/google/callback", asyncHandler(async (req, res) => {
+  const crypto = await import("node:crypto");
+  const code = req.query.code;
+  if (!code) throw badRequest("Missing Google authorization code");
+  const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      grant_type: "authorization_code",
+    }),
+  });
+  const tokens = await tokenRes.json();
+  if (!tokens.access_token) throw badRequest("Google login failed");
+  const infoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  });
+  const info = await infoRes.json();
+  if (!info.email) throw badRequest("Google account has no email");
+  let user = await prisma.user.findUnique({ where: { email: info.email } });
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email: info.email,
+        full_name: info.name || null,
+        password_hash: await bcrypt.hash(crypto.randomBytes(24).toString("hex"), 12),
+      },
+    });
+    await prisma.wallet.create({
+      data: { user_id: user.id, coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
+    });
+  }
+  user = await prisma.user.update({ where: { id: user.id }, data: { email_verified: true } });
+  const token = signToken(user);
+  const frontend = `${req.protocol}://${req.get("host")}/?google_token=${encodeURIComponent(token)}`;
+  res.redirect(frontend);
+}));

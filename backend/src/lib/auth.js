@@ -18,12 +18,13 @@ function extractToken(req) {
   return null;
 }
 
-// Hard gate: 401 when there is no valid token. Sets req.user = { id, email, role }.
+// Hard gate: 401 when there is no valid token. Sets req.user = { id, email, role, sub }.
 export function requireAuth(req, res, next) {
   const token = extractToken(req);
   if (!token) return next(unauthorized());
   try {
-    req.user = verifyToken(token);
+    const decoded = verifyToken(token);
+    req.user = { ...decoded, id: decoded.sub };
     return next();
   } catch {
     return next(unauthorized());
@@ -35,7 +36,8 @@ export function optionalAuth(req, res, next) {
   const token = extractToken(req);
   if (token) {
     try {
-      req.user = verifyToken(token);
+      const decoded = verifyToken(token);
+      req.user = { ...decoded, id: decoded.sub };
     } catch {
       // anonymous
     }
