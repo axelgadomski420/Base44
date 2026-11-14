@@ -1,0 +1,20 @@
+CREATE TABLE users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    display_name VARCHAR(120) NOT NULL,
+    bio VARCHAR(500) NULL,
+    city VARCHAR(120) NULL,
+    region VARCHAR(120) NULL,
+    website VARCHAR(255) NULL,
+    instagram VARCHAR(255) NULL,
+    facebook VARCHAR(255) NULL,
+    tiktok VARCHAR(255) NULL,
+    youtube VARCHAR(255) NULL,
+    avatar_url VARCHAR(500) NULL,
+    verified_badge BOOLEAN NOT NULL DEFAULT FALSE,
+    boosted_until DATETIME(6) NULL,
+    created_at DATETIME(6) NOT NULL,
+    CONSTRAINT chk_users_role CHECK (role IN ('BUYER','BREEDER','ADMIN'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
