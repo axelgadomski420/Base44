@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 
-export const RodoBanner = () => {
+export function RodoBanner() {
   const [accepted, setAccepted] = useState(true);
 
   useEffect(() => {
@@ -52,6 +52,7 @@ export const RodoBanner = () => {
         </Link>
       </div>
       <button
+        type="button"
         onClick={handleAccept}
         style={{
           background: "#10b981",
@@ -68,4 +69,6 @@ export const RodoBanner = () => {
       </button>
     </div>
   );
-};
+}
+
+export default RodoBanner;
