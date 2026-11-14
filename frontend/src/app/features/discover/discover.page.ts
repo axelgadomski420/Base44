@@ -6,7 +6,7 @@ import { I18nService } from '../../core/i18n.service';
 
 interface ListingDto {
   id: number; title: string; breed?: string; price?: number; currency?: string;
-  city?: string; distanceKm?: number; featuredUntil?: string; status: string;
+  city?: string; distanceKm?: number; featuredUntil?: string; status: string; listingType?: string;
   media: { id: number; mediaType: string; url: string; cover: boolean }[];
 }
 interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: string; type: string; }
@@ -16,10 +16,11 @@ interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: strin
   standalone: true,
   imports: [RouterLink, DecimalPipe],
   template: `
-  <header class="px-5 pt-6 pb-2">
+  <header class="px-5 pt-6 pb-2 flex items-center justify-between">
     <h1 class="text-3xl font-extrabold tracking-tight">PURRE <span style="color: var(--accent)">PETS</span></h1>
-    <p class="purre-muted text-sm mt-1">{{ i18n.t('discover.nearby') }} · 50 km</p>
+    <a routerLink="/feed" class="purre-badge">🎬 HoloFeed</a>
   </header>
+  <p class="px-5 purre-muted text-sm pb-2">{{ i18n.t('discover.nearby') }} · 50 km</p>
 
   <section class="px-5 grid grid-cols-2 md:grid-cols-3 gap-3">
     @for (item of items(); track $index) {
@@ -39,9 +40,13 @@ interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: strin
         <div class="p-3">
           <div class="text-sm font-semibold truncate">{{ item.title }}</div>
           <div class="text-xs purre-muted truncate">{{ item.breed }} · {{ item.city }}</div>
-          <div class="text-sm font-bold mt-1" style="color: var(--accent-2)">
-            {{ item.price ? (item.price | number:'.2') + ' ' + item.currency : '' }}
-          </div>
+          @if (item.listingType === 'ADOPTION') {
+            <span class="purre-badge mt-1">❤️ Adopcja</span>
+          } @else {
+            <div class="text-sm font-bold mt-1" style="color: var(--accent-2)">
+              {{ item.price ? (item.price | number:'.2') + ' ' + item.currency : '' }}
+            </div>
+          }
           @if (item.distanceKm != null) { <div class="text-xs purre-muted mt-1">📍 {{ item.distanceKm }} km</div> }
           @if (isFeatured(item)) { <span class="purre-badge mt-1">⭐ {{ i18n.t('ad.sponsored') }}</span> }
         </div>
