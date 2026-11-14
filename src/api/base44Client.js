@@ -86,6 +86,9 @@ const ENTITY_PATHS = {
   Wallet: "Wallet",
   Redemption: "Redemption",
   GameScore: "GameScore",
+  Event: "Event",
+  Group: "Group",
+  VerificationRequest: "VerificationRequest",
 };
 
 function pageOptions(opts = {}) {
@@ -209,7 +212,7 @@ export const base44 = {
   entities,
   integrations: {
     Core: {
-      // Replaces base44.integrations.Core.UploadPublicFile({ file }) â { file_url }
+      // Replaces base44.integrations.Core.UploadPublicFile({ file }) â†’ { file_url }
       async UploadPublicFile({ file }) {
         const formData = new FormData();
         formData.append("file", file);
