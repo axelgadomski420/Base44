@@ -5,11 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * PURRE Assistant (faza 3, wzorzec Adoptek): doradca AI (Qwen2.5 3B) — pytania o rasy,
- * pielęgnację, przygotowanie do adopcji. Odpowiedzi informacyjne; nigdy nie zastępuje weterynarza.
+ * PURRE Assistant (faza 3 + 0.4.0): doradca AI (Qwen2.5 3B przez ai-service).
+ * 0.4.0: pamięć rozmowy — sessionId pozwala ai-service utrzymać kontekst wielo-turowy (Redis, 30 min).
+ * Odpowiedzi informacyjne; nigdy nie zastępuje weterynarza.
  */
 @Slf4j
 @Service
@@ -24,14 +26,19 @@ public class AssistantService {
     }
 
     @SuppressWarnings("unchecked")
-    public String ask(String question) {
+    public String ask(String question, String sessionId) {
         if (question == null || question.isBlank()) {
             throw ApiException.badRequest("EMPTY_QUESTION", "Zadaj pytanie.");
         }
         try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("question", question.trim().substring(0, Math.min(1000, question.trim().length())));
+            if (sessionId != null && !sessionId.isBlank()) {
+                body.put("sessionId", sessionId.substring(0, Math.min(64, sessionId.length())));
+            }
             Map<String, Object> resp = restClient.post()
                     .uri("/assistant")
-                    .body(Map.of("question", question.trim().substring(0, Math.min(1000, question.trim().length()))))
+                    .body(body)
                     .retrieve()
                     .body(Map.class);
             Object answer = resp == null ? null : resp.get("answer");

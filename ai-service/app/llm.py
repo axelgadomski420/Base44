@@ -2,6 +2,7 @@
 
 Limity dla Oracle 6 GB RAM: model 3B na CPU, timeout 15 s, max 512 tokenów odpowiedzi.
 Gdy Ollama nie odpowiada — zwracamy None i warstwa wyższa używa fallbacku.
+0.4.0: asystent obsługuje kontekst wielo-turowy (historia z Redis, max 6 ostatnich tur).
 """
 import json
 import os
@@ -60,7 +61,15 @@ async def analyze(ocr_text: str) -> dict | None:
     return await _generate(prompt, as_json=True)
 
 
-async def answer(question: str) -> dict | None:
-    prompt = f"{ASSISTANT_PROMPT}\n\nPytanie użytkownika: {question[:1000]}"
+async def answer(question: str, history: list[dict] | None = None) -> dict | None:
+    """Odpowiada na pytanie z opcjonalnym kontekstem rozmowy (max 6 ostatnich tur)."""
+    prompt = ASSISTANT_PROMPT + "\n"
+    turns = (history or [])[-6:]
+    if turns:
+        convo = "\n".join(
+            ("Użytkownik: " if t.get("role") == "user" else "Asystent: ") + str(t.get("text", ""))[:500]
+            for t in turns
+        )
+        prompt += f"\nDotychczasowa rozmowa:\n{convo}\n"
+    prompt += f"\nPytanie użytkownika: {question[:1000]}"
     return await _generate(prompt, as_json=False)
-

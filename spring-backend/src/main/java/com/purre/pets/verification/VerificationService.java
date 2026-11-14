@@ -2,13 +2,13 @@ package com.purre.pets.verification;
 
 import com.purre.pets.common.ApiException;
 import com.purre.pets.common.StorageService;
+import com.purre.pets.config.AppProperties;
 import com.purre.pets.user.Role;
 import com.purre.pets.user.User;
 import com.purre.pets.user.UserRepository;
 import com.purre.pets.verification.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -35,6 +35,7 @@ public class VerificationService {
     private final StorageService storageService;
     private final AiClient aiClient;
     private final UserRepository userRepository;
+    private final AppProperties props;
 
     @Transactional
     public VerificationDto submit(Long userId, SubmitVerificationRequest req, List<MultipartFile> files) {
@@ -90,11 +91,37 @@ public class VerificationService {
         AiClient.AnalysisResult analysis = aiClient.analyzeDocuments(aiParts);
         verification.setRiskScore(analysis.riskScore());
         verification.setAiAnalysis(analysis.analysis());
+
+        // Auto-weryfikacja LLM (0.4.0): AI dostępne + niskie ryzyko → APPROVED od razu,
+        // bez czekania na administratora. Wyższe ryzyko → PENDING (human-in-the-loop).
+        boolean autoApproved = false;
+        int threshold = props.getAi().getAutoApproveRiskScore();
+        if (analysis.aiAvailable() && analysis.riskScore() != null && threshold >= 0
+                && analysis.riskScore() <= threshold) {
+            Instant decidedAt = Instant.now();
+            verification.setStatus(VerificationStatus.APPROVED);
+            verification.setDecidedAt(decidedAt);
+            verification.setUpdatedAt(decidedAt);
+            autoApproved = true;
+            Instant purgeAfter = decidedAt.plus(RETENTION_DAYS, ChronoUnit.DAYS);
+            for (VerificationDocument doc : docs) {
+                doc.setPurgeAfter(purgeAfter);
+                documentRepository.save(doc);
+            }
+            user.setVerifiedBadge(true);
+            userRepository.save(user);
+        }
         verification = verificationRepository.save(verification);
 
-        history(verification.getId(), fromStatus == null ? null : fromStatus.name(), VerificationStatus.PENDING.name(),
-                "Złożono dokumenty (" + docs.size() + " plików)", userId);
-        log.info("Weryfikacja id={} złożona, riskScore={}, ai={}", verification.getId(), analysis.riskScore(), analysis.aiAvailable());
+        if (autoApproved) {
+            history(verification.getId(), VerificationStatus.PENDING.name(), VerificationStatus.APPROVED.name(),
+                    "Auto-weryfikacja LLM (riskScore=" + analysis.riskScore() + ")", null);
+            log.info("Weryfikacja id={} ZATWIERDZONA AUTOMATYCZNIE przez LLM (riskScore={}).", verification.getId(), analysis.riskScore());
+        } else {
+            history(verification.getId(), fromStatus == null ? null : fromStatus.name(), VerificationStatus.PENDING.name(),
+                    "Złożono dokumenty (" + docs.size() + " plików)", userId);
+            log.info("Weryfikacja id={} złożona, riskScore={}, ai={} → oczekuje na admina.", verification.getId(), analysis.riskScore(), analysis.aiAvailable());
+        }
         return VerificationDto.from(verification, docs.stream().map(DocumentDto::from).toList());
     }
 
@@ -209,7 +236,7 @@ public class VerificationService {
 
     private String sanitize(String name) {
         if (name == null) return "dokument";
-        String clean = name.replaceAll("[^\p{L}\p{N}._-]", "_");
+        String clean = name.replaceAll("[^\\p{L}\\p{N}._-]", "_");
         return clean.length() > 200 ? clean.substring(clean.length() - 200) : clean;
     }
 }
