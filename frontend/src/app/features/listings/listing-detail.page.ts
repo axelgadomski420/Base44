@@ -53,7 +53,9 @@ interface ListingDto {
         <p class="purre-muted text-sm">{{ l.breed }} · {{ l.city }} {{ l.region ? '· ' + l.region : '' }}</p>
         <p class="text-sm leading-relaxed whitespace-pre-line">{{ l.description }}</p>
         @if (l.status === 'SOLD') { <p class="purre-badge">✅ {{ i18n.t('listing.sold') }}</p> }
-        <a [routerLink]="['/messenger']" class="purre-btn inline-block mt-2">💬 Napisz do hodowcy</a>
+        <div class="flex gap-2 mt-2">
+          <a [routerLink]="['/messenger']" [queryParams]="{ to: l.breederId }" class="purre-btn flex-1 text-center">💬 Napisz do hodowcy</a>
+        </div>
       </div>
     </article>
 
