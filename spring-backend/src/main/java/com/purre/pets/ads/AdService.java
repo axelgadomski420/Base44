@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * System reklam: sponsorowane ogłoszenia hodowców (PURRE Coins), partnerzy, sloty AdSense.
  * Zasady: nie zasłaniają treści, oznaczone „Sponsorowane", rotacja 1 na 5–7 interakcji (capping po stronie UI),
- * wyłączone dla PURRE Premium. Zgodność RODO: bez profilowania, impression anonimowy opcjonalnie.
+ * wyłączone dla PURRE Premium. Zgodność RODO: bez profilowania, impression i click anonimowe.
  */
 @Slf4j
 @Service
@@ -92,6 +92,15 @@ public class AdService {
         impressionRepository.save(AdImpression.builder()
                 .campaignId(campaign.getId()).userId(userId).placement(placement).createdAt(Instant.now()).build());
         return AdDto.from(campaign);
+    }
+
+    /** Publiczne zliczanie kliknięć — bez identyfikacji użytkownika (RODO). */
+    @Transactional
+    public void recordClick(Long campaignId) {
+        campaignRepository.findById(campaignId).ifPresent(c -> {
+            c.setClicks(c.getClicks() + 1);
+            campaignRepository.save(c);
+        });
     }
 
     @Transactional(readOnly = true)

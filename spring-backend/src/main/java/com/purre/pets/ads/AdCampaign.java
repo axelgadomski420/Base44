@@ -44,6 +44,9 @@ public class AdCampaign {
     @Column(nullable = false)
     private long impressions;
 
+    @Column(nullable = false)
+    private long clicks;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

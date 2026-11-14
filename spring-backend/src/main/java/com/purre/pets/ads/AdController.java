@@ -25,6 +25,12 @@ public class AdController {
         return adService.serve(placement, principal == null ? null : principal.id());
     }
 
+    /** Publiczne zliczanie kliknięć — bez identyfikacji użytkownika (RODO). */
+    @PostMapping("/{id}/click")
+    public void click(@PathVariable Long id) {
+        adService.recordClick(id);
+    }
+
     public record CreateSponsoredRequest(
             @NotBlank @Size(max = 160) String title,
             @Size(max = 500) String imageUrl,
@@ -58,7 +64,7 @@ public class AdController {
     }
 
     public record CampaignDto(Long id, Long advertiserId, String title, String imageUrl, String targetUrl,
-                              String type, Integer priceCoins, boolean active, Long impressions,
+                              String type, Integer priceCoins, boolean active, Long impressions, Long clicks,
                               java.time.Instant activeUntil) {}
 
     @GetMapping("/managed/list")
@@ -66,7 +72,8 @@ public class AdController {
     public List<CampaignDto> listAll() {
         return adService.listAll().stream().map(c -> new CampaignDto(
                 c.getId(), c.getAdvertiserId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(),
-                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getActiveUntil())).toList();
+                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getClicks(),
+                c.getActiveUntil())).toList();
     }
 
     @PostMapping("/managed/{id}/toggle")
@@ -74,6 +81,7 @@ public class AdController {
     public CampaignDto toggle(@PathVariable Long id, @RequestBody java.util.Map<String, Boolean> body) {
         var c = adService.setActive(id, Boolean.TRUE.equals(body.get("active")));
         return new CampaignDto(c.getId(), c.getAdvertiserId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(),
-                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getActiveUntil());
+                c.getType().name(), c.getPriceCoins(), c.isActive(), c.getImpressions(), c.getClicks(),
+                c.getActiveUntil());
     }
 }

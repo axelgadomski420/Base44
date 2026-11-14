@@ -54,6 +54,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**", "/health", "/ws/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/listings/**", "/ads/serve", "/arcade/leaderboard").permitAll()
+                .requestMatchers(HttpMethod.POST, "/ads/*/click").permitAll()
                 .requestMatchers("/stripe/webhook").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .requestMatchers("/verification/**", "/arcade/**", "/coins/**", "/purchases/**",
