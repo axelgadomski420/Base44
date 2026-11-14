@@ -2,7 +2,15 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { ImagePlus, Loader2 } from "lucide-react";
+import {
+  BadgeCheck,
+  Film,
+  ImagePlus,
+  Loader2,
+  PawPrint,
+  ShieldAlert,
+  Store,
+} from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { Image } from "@/components/ui/image";
 import { base44 } from "@/api/base44Client";
@@ -19,10 +27,37 @@ export const Route = createFileRoute("/_app/_authed/create")({
   component: CreatePage,
 });
 
-const TABS = [
-  { id: "listing", labelKey: "create.listing", hintKey: "create.listingHint" },
-  { id: "post", labelKey: "create.post", hintKey: "create.postHint" },
-  { id: "pet", labelKey: "create.pet", hintKey: "create.petHint" },
+const CHOICES = [
+  {
+    id: "post",
+    title: "Post / HoloFeed",
+    hint: "Zdjecie lub krotki tekst w feedzie spolecznosci",
+    icon: ImagePlus,
+    accent: "from-violet/25 to-aura/10",
+  },
+  {
+    id: "reel",
+    title: "Reel / wideo",
+    hint: "Pionowy film — otworz Studio edytora TikTok-style",
+    icon: Film,
+    accent: "from-aura/25 to-violet/15",
+    href: "/video-editor",
+  },
+  {
+    id: "listing",
+    title: "Ogloszenie",
+    hint: "Sprzedaz lub adopcja — tylko zweryfikowany hodowca",
+    icon: Store,
+    accent: "from-chart-4/20 to-violet/10",
+    requiresVerified: true,
+  },
+  {
+    id: "pet",
+    title: "Profil zwierzaka",
+    hint: "Karta pupila w Twoim profilu",
+    icon: PawPrint,
+    accent: "from-violet/15 to-aura/20",
+  },
 ];
 
 function CreatePage() {
@@ -31,12 +66,11 @@ function CreatePage() {
   const { user } = useAuth();
   const moderate = useServerFn(moderateListing);
   const create = useServerFn(createListing);
-  const { profile, reload: reloadProfile } = useProfile();
+  const { profile } = useProfile();
   const { coins } = useWallet();
 
-  const [tab, setTab] = useState("listing");
+  const [tab, setTab] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [breederBusy, setBreederBusy] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [kind, setKind] = useState("sale");
@@ -54,6 +88,7 @@ function CreatePage() {
     petBio: "",
   });
 
+  const isVerifiedBreeder = !!(profile?.verified);
   const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
   const upload = async (event) => {
@@ -62,36 +97,42 @@ function CreatePage() {
     setBusy(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
-      if (file.type.startsWith("video/")) {
-        setVideoUrl(file_url);
-      } else {
-        setImageUrl(file_url);
-      }
+      if (file.type.startsWith("video/")) setVideoUrl(file_url);
+      else setImageUrl(file_url);
+      toast.success("Plik wgrany");
+    } catch (error) {
+      toast.error(error?.message ?? "Upload nie powiodl sie");
     } finally {
       setBusy(false);
     }
   };
 
-  const becomeBreeder = async () => {
-    setBreederBusy(true);
-    try {
-      const current = profile ?? (await ensureProfile(user));
-      await base44.entities.Profile.update(current.id, { account_type: "breeder" });
-      await reloadProfile();
-      toast.success("Konto hodowcy aktywne — możesz dodawać ogłoszenia.");
-    } catch (error) {
-      toast.error(error?.message ?? "Nie udało się przełączyć konta");
-    } finally {
-      setBreederBusy(false);
+  const selectChoice = (choice) => {
+    if (choice.href) {
+      navigate({ to: choice.href });
+      return;
     }
+    if (choice.requiresVerified && !isVerifiedBreeder) {
+      toast.message("Ogloszenia po weryfikacji", {
+        description: "Najpierw wyslij dokumenty hodowli — admin musi zatwierdzic wniosek.",
+      });
+      setTab("listing");
+      return;
+    }
+    setTab(choice.id);
   };
 
   const submit = async () => {
     setBusy(true);
     try {
-      const profile = await ensureProfile(user);
+      const currentProfile = await ensureProfile(user);
 
       if (tab === "listing") {
+        if (!currentProfile?.verified) {
+          toast.error("Konto nie jest zweryfikowanym hodowca");
+          navigate({ to: "/verify" });
+          return;
+        }
         const { listing, cost } = await create({
           data: {
             kind,
@@ -105,8 +146,7 @@ function CreatePage() {
             image_urls: imageUrl ? [imageUrl] : [],
           },
         });
-        if (cost > 0) toast.success(`Opublikowano — pobrano ${cost} PURRE coinów.`);
-
+        if (cost > 0) toast.success(`Opublikowano — pobrano ${cost} PURRE coinow.`);
         toast.loading(t("create.moderation"), { id: "mod" });
         try {
           const result = await moderate({ data: { listing_id: listing.id } });
@@ -115,7 +155,7 @@ function CreatePage() {
             { id: "mod" }
           );
         } catch (error) {
-          toast.error(error?.message ?? "Moderacja niedostępna", { id: "mod" });
+          toast.error(error?.message ?? "Moderacja niedostepna", { id: "mod" });
         }
         navigate({ to: "/listings/$id", params: { id: listing.id } });
         return;
@@ -124,10 +164,10 @@ function CreatePage() {
       if (tab === "post") {
         await base44.entities.Post.create({
           author_id: user.id,
-          author_name: profile?.kennel_name || profile?.display_name || user.full_name,
-          author_handle: profile?.handle,
-          author_avatar: profile?.avatar_url,
-          author_verified: !!profile?.verified,
+          author_name: currentProfile?.kennel_name || currentProfile?.display_name || user.full_name,
+          author_handle: currentProfile?.handle,
+          author_avatar: currentProfile?.avatar_url,
+          author_verified: !!currentProfile?.verified,
           city: form.city,
           breed: form.breed,
           caption: form.postCaption,
@@ -145,245 +185,308 @@ function CreatePage() {
 
       await base44.entities.Pet.create({
         owner_id: user.id,
-        owner_name: profile?.display_name || user.full_name,
+        owner_name: currentProfile?.display_name || user.full_name,
         name: form.petName,
         species: form.species,
-        breed: form.breed,
+        breed: form.breed || undefined,
         birth_date: form.petBirth || undefined,
-        bio: form.petBio,
-        city: form.city,
+        bio: form.petBio || undefined,
         photos: imageUrl ? [imageUrl] : [],
-        pedigree: true,
+        city: form.city,
       });
-      toast.success(t("create.success"));
+      toast.success("Profil zwierzaka zapisany");
       navigate({ to: "/profile" });
     } catch (error) {
-      toast.error(error?.message ?? "Nie udało się zapisać");
+      toast.error(error?.message ?? "Nie udalo sie zapisac");
     } finally {
       setBusy(false);
     }
   };
 
-  const activeTab = TABS.find((item) => item.id === tab);
+  const inputClass =
+    "mt-1.5 h-11 w-full rounded-xl border border-border/70 bg-background/40 px-3 text-sm outline-none focus:border-aura/50";
+
+  if (!tab) {
+    return (
+      <div>
+        <TopBar title="Dodaj" />
+        <div className="px-4 pb-12 pt-6 lg:px-8">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">create</p>
+          <h1 className="mt-2 font-display text-4xl">
+            <span className="aura-text">Co chcesz dodac?</span>
+          </h1>
+          <p className="mt-2 max-w-lg text-sm text-muted-foreground">
+            Najpierw post lub reel — ogloszenia sprzedazy dopiero po weryfikacji dokumentow hodowli.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            {CHOICES.map((choice) => (
+              <button
+                key={choice.id}
+                type="button"
+                onClick={() => selectChoice(choice)}
+                className={cn(
+                  "card-hover flex flex-col items-start rounded-[var(--radius)] border border-border/70 bg-gradient-to-br p-5 text-left",
+                  choice.accent
+                )}
+              >
+                <choice.icon className="h-6 w-6 text-aura" />
+                <p className="mt-3 font-display text-lg">{choice.title}</p>
+                <p className="mt-1 text-[12px] text-muted-foreground">{choice.hint}</p>
+                {choice.requiresVerified && (
+                  <span
+                    className={cn(
+                      "mt-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wider",
+                      isVerifiedBreeder ? "bg-aura/20 text-aura" : "bg-violet/15 text-violet"
+                    )}
+                  >
+                    {isVerifiedBreeder ? (
+                      <>
+                        <BadgeCheck className="h-3 w-3" /> Zweryfikowany
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="h-3 w-3" /> Wymaga weryfikacji
+                      </>
+                    )}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <TopBar />
+      <TopBar title="Dodaj" />
       <div className="px-4 pb-12 pt-6 lg:px-8">
-        <h1 className="font-display text-3xl">
-          <span className="aura-text">{t("create.title")}</span>
+        <button
+          type="button"
+          onClick={() => setTab(null)}
+          className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+        >
+          ← Wroc do wyboru
+        </button>
+        <h1 className="mt-2 font-display text-3xl">
+          <span className="aura-text">
+            {tab === "post" && "Nowy post"}
+            {tab === "listing" && "Ogloszenie"}
+            {tab === "pet" && "Profil zwierzaka"}
+          </span>
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t(activeTab.hintKey)}</p>
-
-        <div className="mt-5 flex gap-2">
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={cn(
-                "rounded-full px-4 py-1.5 text-xs font-medium transition",
-                tab === item.id
-                  ? "bg-foreground text-background"
-                  : "border border-border/70 text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t(item.labelKey)}
-            </button>
-          ))}
-        </div>
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
           <div className="space-y-3 rounded-[var(--radius)] border border-border/70 bg-card/60 p-4">
-            {tab === "listing" && profile?.account_type !== "breeder" && (
+            {tab === "listing" && !isVerifiedBreeder && (
               <div className="rounded-2xl border border-violet/40 bg-violet/10 p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-violet">Tylko konto hodowcy</p>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
-                  Ogłoszenia dodają hodowle. Pierwsze ogłoszenie jest gratis, kolejne kosztują{" "}
-                  {LISTING_COST} PURRE coinów.
+                <p className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-violet">
+                  <ShieldAlert className="h-3.5 w-3.5" /> Wymagana weryfikacja
                 </p>
-                <button
-                  type="button"
-                  onClick={becomeBreeder}
-                  disabled={breederBusy}
-                  className="btn-aura mt-3 w-full rounded-xl py-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] disabled:opacity-60"
-                >
-                  {breederBusy ? "Przełączam…" : "Zostań hodowcą"}
-                </button>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
+                  Ogloszenia moga publikowac wylacznie hodowcy po zatwierdzeniu dokumentow przez
+                  administratora. Nie da sie „przelaczyc” konta jednym kliknieciem — wyslij wniosek
+                  z legitymacja / rejestrem klubu.
+                </p>
                 <Link
-                  to="/onboarding"
-                  className="mt-2 block text-center text-[10px] uppercase tracking-[0.18em] text-muted-foreground"
+                  to="/verify"
+                  className="btn-aura mt-3 inline-flex w-full items-center justify-center rounded-xl py-2.5 text-[10px] font-semibold uppercase tracking-[0.2em]"
                 >
-                  Uzupełnij dane hodowli
+                  Przejdz do weryfikacji
                 </Link>
               </div>
             )}
 
-            {tab === "listing" && profile?.account_type === "breeder" && (
+            {(tab === "post" || (tab === "listing" && isVerifiedBreeder) || tab === "pet") && (
               <>
-                <div className="flex gap-2">
-                  {["sale", "adoption"].map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setKind(option)}
-                      className={cn(
-                        "flex-1 rounded-xl border py-2 text-[11px] uppercase tracking-[0.18em] transition",
-                        kind === option
-                          ? "border-violet/70 bg-violet/10 text-foreground"
-                          : "border-border/70 text-muted-foreground"
-                      )}
-                    >
-                      {option === "sale" ? t("explore.listings") : t("explore.adoptions")}
-                    </button>
-                  ))}
-                </div>
-                <Field label={t("create.titleField")}>
-                  <input value={form.title} onChange={set("title")} className={inputClass} placeholder="Szczeniaki golden retriever, rodzina B" />
-                </Field>
-                <Field label={t("create.description")}>
-                  <textarea value={form.description} onChange={set("description")} rows={4} className={inputClass} placeholder="Rodowód, badania, warunki odbioru…" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t("create.priceField")}>
-                    <input value={form.price} onChange={set("price")} inputMode="numeric" className={inputClass} placeholder="3500" />
-                  </Field>
-                  <Field label={t("create.city")}>
-                    <select value={form.city} onChange={set("city")} className={inputClass}>
-                      {CITY_NAMES.map((name) => (
-                        <option key={name} value={name} className="bg-popover">
-                          {name}
-                        </option>
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/30 px-4 py-8 text-center">
+                  <ImagePlus className="h-5 w-5 text-muted-foreground" />
+                  <span className="mt-2 text-xs text-muted-foreground">
+                    {tab === "post" ? "Zdjecie lub wideo" : "Zdjecie"}
+                  </span>
+                  <input
+                    type="file"
+                    accept={tab === "post" ? "image/*,video/*" : "image/*"}
+                    className="sr-only"
+                    onChange={upload}
+                  />
+                </label>
+                {(imageUrl || videoUrl) && (
+                  <div className="overflow-hidden rounded-xl border border-border/50">
+                    {videoUrl ? (
+                      <video src={videoUrl} className="max-h-48 w-full object-cover" controls />
+                    ) : (
+                      <Image src={imageUrl} alt="" className="max-h-48 w-full object-cover" />
+                    )}
+                  </div>
+                )}
+
+                {tab === "post" && (
+                  <>
+                    <Field label="Opis">
+                      <textarea
+                        value={form.postCaption}
+                        onChange={set("postCaption")}
+                        rows={4}
+                        className={inputClass}
+                        placeholder="Co sie dzieje w hodowli?"
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Miasto">
+                        <select value={form.city} onChange={set("city")} className={inputClass}>
+                          {CITY_NAMES.map((c) => (
+                            <option key={c} value={c} className="bg-popover">
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Rasa (opcjonalnie)">
+                        <input value={form.breed} onChange={set("breed")} className={inputClass} />
+                      </Field>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Pelny edytor filmow:{" "}
+                      <Link to="/video-editor" className="text-aura underline">
+                        Studio Reels
+                      </Link>
+                    </p>
+                  </>
+                )}
+
+                {tab === "listing" && isVerifiedBreeder && (
+                  <>
+                    <div className="flex gap-2">
+                      {[
+                        { id: "sale", label: "Sprzedaz" },
+                        { id: "adoption", label: "Adopcja" },
+                      ].map((k) => (
+                        <button
+                          key={k.id}
+                          type="button"
+                          onClick={() => setKind(k.id)}
+                          className={cn(
+                            "rounded-full px-3 py-1.5 text-xs",
+                            kind === k.id ? "bg-foreground text-background" : "border border-border/70"
+                          )}
+                        >
+                          {k.label}
+                        </button>
                       ))}
-                    </select>
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t("create.species")}>
-                    <select value={form.species} onChange={set("species")} className={inputClass}>
-                      <option value="dog" className="bg-popover">Pies</option>
-                      <option value="cat" className="bg-popover">Kot</option>
-                    </select>
-                  </Field>
-                  <Field label={t("create.breed")}>
-                    <input value={form.breed} onChange={set("breed")} className={inputClass} placeholder="Golden Retriever" />
-                  </Field>
-                </div>
-                <Field label="Wiek (miesiące)">
-                  <input value={form.age_months} onChange={set("age_months")} inputMode="numeric" className={inputClass} placeholder="3" />
-                </Field>
-                <p className="text-[10px] leading-relaxed text-muted-foreground">
-                  Pierwsze ogłoszenie gratis · kolejne {LISTING_COST} PURRE coinów · masz {coins}{" "}
-                  {coins === 1 ? "monetę" : "coinów"}.
-                </p>
-              </>
-            )}
+                    </div>
+                    <Field label="Tytul">
+                      <input value={form.title} onChange={set("title")} className={inputClass} required />
+                    </Field>
+                    <Field label="Opis">
+                      <textarea value={form.description} onChange={set("description")} rows={4} className={inputClass} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Cena (zl)">
+                        <input value={form.price} onChange={set("price")} inputMode="decimal" className={inputClass} />
+                      </Field>
+                      <Field label="Miasto">
+                        <select value={form.city} onChange={set("city")} className={inputClass}>
+                          {CITY_NAMES.map((c) => (
+                            <option key={c} value={c} className="bg-popover">
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Gatunek">
+                        <select value={form.species} onChange={set("species")} className={inputClass}>
+                          <option value="dog" className="bg-popover">
+                            Pies
+                          </option>
+                          <option value="cat" className="bg-popover">
+                            Kot
+                          </option>
+                        </select>
+                      </Field>
+                      <Field label="Rasa">
+                        <input value={form.breed} onChange={set("breed")} className={inputClass} />
+                      </Field>
+                    </div>
+                    <Field label="Wiek (miesiace)">
+                      <input value={form.age_months} onChange={set("age_months")} inputMode="numeric" className={inputClass} />
+                    </Field>
+                    <p className="text-[10px] text-muted-foreground">
+                      Pierwsze ogloszenie gratis · kolejne {LISTING_COST} coinow · masz {coins}.
+                    </p>
+                  </>
+                )}
 
-            {tab === "post" && (
-              <>
-                <Field label="Opis posta">
-                  <textarea value={form.postCaption} onChange={set("postCaption")} rows={4} className={inputClass} placeholder="Co nowego u Twoich zwierzaków?" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t("create.breed")}>
-                    <input value={form.breed} onChange={set("breed")} className={inputClass} placeholder="Maine Coon" />
-                  </Field>
-                  <Field label={t("create.city")}>
-                    <select value={form.city} onChange={set("city")} className={inputClass}>
-                      {CITY_NAMES.map((name) => (
-                        <option key={name} value={name} className="bg-popover">{name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-              </>
-            )}
+                {tab === "pet" && (
+                  <>
+                    <Field label="Imie">
+                      <input value={form.petName} onChange={set("petName")} className={inputClass} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Gatunek">
+                        <select value={form.species} onChange={set("species")} className={inputClass}>
+                          <option value="dog" className="bg-popover">
+                            Pies
+                          </option>
+                          <option value="cat" className="bg-popover">
+                            Kot
+                          </option>
+                        </select>
+                      </Field>
+                      <Field label="Rasa">
+                        <input value={form.breed} onChange={set("breed")} className={inputClass} />
+                      </Field>
+                    </div>
+                    <Field label="Data urodzenia">
+                      <input type="date" value={form.petBirth} onChange={set("petBirth")} className={inputClass} />
+                    </Field>
+                    <Field label="Opis">
+                      <textarea value={form.petBio} onChange={set("petBio")} rows={3} className={inputClass} />
+                    </Field>
+                  </>
+                )}
 
-            {tab === "pet" && (
-              <>
-                <Field label="Imię zwierzaka">
-                  <input value={form.petName} onChange={set("petName")} className={inputClass} placeholder="Luna" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t("create.species")}>
-                    <select value={form.species} onChange={set("species")} className={inputClass}>
-                      <option value="dog" className="bg-popover">Pies</option>
-                      <option value="cat" className="bg-popover">Kot</option>
-                    </select>
-                  </Field>
-                  <Field label={t("create.breed")}>
-                    <input value={form.breed} onChange={set("breed")} className={inputClass} placeholder="British Shorthair" />
-                  </Field>
-                </div>
-                <Field label="Data urodzenia">
-                  <input type="date" value={form.petBirth} onChange={set("petBirth")} className={inputClass} />
-                </Field>
-                <Field label={t("create.description")}>
-                  <textarea value={form.petBio} onChange={set("petBio")} rows={3} className={inputClass} placeholder="Charakter, osiągnięcia, rodowód…" />
-                </Field>
+                {(tab !== "listing" || isVerifiedBreeder) && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={submit}
+                    className="btn-aura mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[11px] font-semibold uppercase tracking-[0.18em] disabled:opacity-60"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    Opublikuj
+                  </button>
+                )}
               </>
-            )}
-
-            {!(tab === "listing" && profile?.account_type !== "breeder") && (
-              <button
-                type="button"
-                onClick={submit}
-                disabled={busy}
-                className="btn-aura mt-2 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[11px] font-semibold uppercase tracking-[0.2em] disabled:opacity-60"
-              >
-                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {busy ? t("create.publishing") : t("create.publish")}
-              </button>
             )}
           </div>
 
-          <div className="rounded-[var(--radius)] border border-border/70 bg-card/60 p-4">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">{t("create.photos")}</p>
-            <div className="mt-3 overflow-hidden rounded-xl border border-dashed border-border/70">
-              {videoUrl ? (
-                <video src={videoUrl} className="aspect-square w-full object-cover" muted loop playsInline controls />
-              ) : imageUrl ? (
-                <Image src={imageUrl} alt="Podgląd" className="aspect-square w-full object-cover" />
-              ) : (
-                <div className="grid aspect-square w-full place-items-center text-muted-foreground">
-                  <ImagePlus className="h-6 w-6" />
-                </div>
-              )}
-            </div>
-            <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl border border-border/70 py-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">
-              {tab === "post" ? "Wgraj zdjęcie lub wideo" : t("create.uploadPhoto")}
-              <input
-                type="file"
-                accept={tab === "post" ? "image/*,video/*" : "image/*"}
-                onChange={upload}
-                className="hidden"
-              />
-            </label>
-            {tab === "post" && (
-              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                Wideo trafia do Holo Reels — pionowy feed jak na TikToku.
+          <aside className="rounded-[var(--radius)] border border-border/70 bg-card/40 p-4 text-[12px] text-muted-foreground">
+            <p className="text-[10px] uppercase tracking-[0.24em]">Zasady</p>
+            <ul className="mt-2 list-disc space-y-1.5 pl-4">
+              <li>Posty i reels — kazdy zalogowany uzytkownik.</li>
+              <li>Ogloszenia — tylko po zatwierdzeniu dokumentow przez admina.</li>
+              <li>Odznaka „Zweryfikowany hodowca” pojawia sie automatycznie po approve.</li>
+            </ul>
+            {profile?.verified && (
+              <p className="mt-3 flex items-center gap-1.5 text-aura">
+                <BadgeCheck className="h-4 w-4" /> Twoje konto jest zweryfikowane
               </p>
             )}
-            <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-              Zdjęcia są publiczne (stored publicly — anyone with the link can open them), tak jak w
-              każdym marketplace.
-            </p>
-          </div>
+          </aside>
         </div>
       </div>
     </div>
   );
 }
 
-const inputClass =
-  "w-full rounded-xl border border-border/70 bg-background/40 px-3 py-2.5 text-sm outline-none transition placeholder:text-muted-foreground/60 focus:border-violet/60";
-
 function Field({ label, children }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-        {label}
-      </span>
+    <label className="block text-[11px] text-muted-foreground">
+      {label}
       {children}
     </label>
   );
