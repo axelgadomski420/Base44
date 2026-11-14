@@ -5,6 +5,8 @@ import TopBar from "@/components/layout/TopBar";
 import StoryRow from "@/components/feed/StoryRow";
 import PostCard from "@/components/feed/PostCard";
 import DiscoverRail from "@/components/discover/DiscoverRail";
+import AdSlot from "@/components/ads/AdSlot";
+import { useAds } from "@/hooks/useAds";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
@@ -29,6 +31,7 @@ function DiscoverPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
+  const { mix } = useAds();
   const [tab, setTab] = useState("forYou");
   const [posts, setPosts] = useState([]);
   const [breeders, setBreeders] = useState([]);
@@ -68,6 +71,9 @@ function DiscoverPage() {
     if (tab === "following") return posts.filter((post) => followingIds.includes(post.author_id));
     return posts;
   }, [isDemo, posts, tab, followingIds]);
+
+  // Reklamy wplecione w feed (co kilka postów) — PREMIUM ich nie widzi.
+  const feedRows = useMemo(() => mix(visiblePosts, "feed"), [mix, visiblePosts]);
 
   const storyBreeders = breeders.length
     ? breeders.map((profile) => ({
@@ -162,7 +168,7 @@ function DiscoverPage() {
                 <div key={index} className="h-80 animate-pulse rounded-[var(--radius)] bg-secondary/40" />
               ))}
             </div>
-          ) : visiblePosts.length === 0 ? (
+          ) : feedRows.length === 0 ? (
             <div className="rounded-[var(--radius)] border border-dashed border-border/70 p-10 text-center">
               <p className="text-sm text-muted-foreground">
                 {tab === "following" ? "Obserwuj hodowle, aby zobaczyć ich posty." : t("common.empty")}
@@ -170,9 +176,13 @@ function DiscoverPage() {
             </div>
           ) : (
             <div className="space-y-5">
-              {visiblePosts.map((post) => (
-                <PostCard key={post.id} post={post} demo={isDemo} />
-              ))}
+              {feedRows.map((row, index) =>
+                row?.type === "ad" ? (
+                  <AdSlot key={`ad-${row.ad?.id ?? index}`} ad={row.ad} variant="feed" />
+                ) : (
+                  <PostCard key={row?.data?.id ?? index} post={row?.data} demo={isDemo} />
+                )
+              )}
             </div>
           )}
         </div>

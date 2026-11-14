@@ -45,6 +45,10 @@ model Profile {
   breeds        String[] @default([])
   followers     Int      @default(0)
   verified      Boolean  @default(false)
+  website_url   String?  // strona hodowli
+  instagram_url String?  // socials (profil PRO)
+  tiktok_url    String?
+  gallery_urls  String[] @default([]) // galeria profilu (max 12)
   created_by_id String?
   created_date  DateTime @default(now())
   updated_date  DateTime @updatedAt
