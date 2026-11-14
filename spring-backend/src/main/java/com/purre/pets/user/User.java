@@ -46,6 +46,9 @@ public class User {
     @Column(name = "boosted_until")
     private Instant boostedUntil;
 
+    @Column(name = "premium_until")
+    private Instant premiumUntil;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 }
