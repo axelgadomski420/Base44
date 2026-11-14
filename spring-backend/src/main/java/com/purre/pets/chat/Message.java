@@ -19,6 +19,10 @@ public class Message {
     @Column(name = "sender_id", nullable = false)
     private Long senderId;
 
+    /** 0.5.0: wiadomość na którą odpowiadamy. */
+    @Column(name = "reply_to_id")
+    private Long replyToId;
+
     @Column(nullable = false, columnDefinition = "VARCHAR(4000)")
     private String content;
 
@@ -35,4 +39,12 @@ public class Message {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    /** 0.5.0: edycja (tylko autor). */
+    @Column(name = "edited_at")
+    private Instant editedAt;
+
+    /** 0.5.0: miękkie usunięcie — treść znika, rekord zostaje (historia rozmowy). */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

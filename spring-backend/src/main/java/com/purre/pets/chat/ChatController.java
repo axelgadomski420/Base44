@@ -45,9 +45,59 @@ public class ChatController {
     }
 
     @PostMapping("/{id}/read")
-    public java.util.Map<String, Object> markRead(@AuthenticationPrincipal UserPrincipal principal,
-                                                  @PathVariable Long id) {
+    public Map<String, Object> markRead(@AuthenticationPrincipal UserPrincipal principal,
+                                        @PathVariable Long id) {
         chatService.markRead(principal.id(), id);
         return Map.of("ok", true);
+    }
+
+    /** 0.5.0 M10: reakcja na wiadomość (toggle). */
+    @PostMapping("/messages/{messageId}/react")
+    public MessageDto react(@AuthenticationPrincipal UserPrincipal principal,
+                            @PathVariable Long messageId,
+                            @RequestBody Map<String, String> body) {
+        return chatService.react(principal.id(), messageId, body.get("emoji"));
+    }
+
+    /** 0.5.0 M10: edycja własnej wiadomości. */
+    @PatchMapping("/messages/{messageId}")
+    public MessageDto edit(@AuthenticationPrincipal UserPrincipal principal,
+                           @PathVariable Long messageId,
+                           @RequestBody Map<String, String> body) {
+        return chatService.edit(principal.id(), messageId, body.getOrDefault("content", ""));
+    }
+
+    /** 0.5.0 M10: miękkie usunięcie własnej wiadomości. */
+    @DeleteMapping("/messages/{messageId}")
+    public MessageDto delete(@AuthenticationPrincipal UserPrincipal principal,
+                             @PathVariable Long messageId) {
+        return chatService.delete(principal.id(), messageId);
+    }
+
+    /** 0.5.0 M10: wyszukiwanie wiadomości we własnych rozmowach. */
+    @GetMapping("/search")
+    public List<MessageDto> search(@AuthenticationPrincipal UserPrincipal principal,
+                                   @RequestParam("q") String q) {
+        return chatService.search(principal.id(), q);
+    }
+
+    /** 0.5.0 M10: blokowanie użytkownika. */
+    @PostMapping("/block")
+    public Map<String, Object> block(@AuthenticationPrincipal UserPrincipal principal,
+                                     @RequestBody Map<String, Long> body) {
+        chatService.block(principal.id(), body.get("userId"));
+        return Map.of("ok", true);
+    }
+
+    @DeleteMapping("/block/{userId}")
+    public Map<String, Object> unblock(@AuthenticationPrincipal UserPrincipal principal,
+                                       @PathVariable Long userId) {
+        chatService.unblock(principal.id(), userId);
+        return Map.of("ok", true);
+    }
+
+    @GetMapping("/blocked")
+    public List<Long> blocked(@AuthenticationPrincipal UserPrincipal principal) {
+        return chatService.blockedIds(principal.id());
     }
 }

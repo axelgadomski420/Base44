@@ -13,7 +13,7 @@ import java.security.Principal;
 import java.util.Map;
 
 /**
- * STOMP: /app/chat.send {conversationId, content, attachmentUrl?, attachmentType?, attachmentName?}
+ * STOMP: /app/chat.send {conversationId, content, attachmentUrl?, attachmentType?, attachmentName?, replyToId?}
  *        → /topic/conversation.{id}
  *        /app/chat.typing {conversationId} → /topic/typing.{id}
  */
@@ -34,7 +34,9 @@ public class ChatWsController {
         String attachmentUrl = str(payload.get("attachmentUrl"));
         String attachmentType = str(payload.get("attachmentType"));
         String attachmentName = str(payload.get("attachmentName"));
-        chatService.send(user.id(), conversationId, content, attachmentUrl, attachmentType, attachmentName);
+        Object replyRaw = payload.get("replyToId");
+        Long replyToId = replyRaw instanceof Number n ? n.longValue() : null;
+        chatService.send(user.id(), conversationId, content, attachmentUrl, attachmentType, attachmentName, replyToId);
     }
 
     @MessageMapping("/chat.typing")
