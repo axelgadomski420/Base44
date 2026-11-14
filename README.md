@@ -1,40 +1,79 @@
-# Base44 App — TanStack Start
+# PURRE PETS — Premium Social Marketplace
 
-A full-stack Base44 app: [TanStack Start](https://tanstack.com/start) (React 19, plain JavaScript) with file-based routes, server functions and server routes, server-rendered and hosted by Base44.
+Premium platforma webowa (PWA) dla hodowców psów i kotów oraz osób szukających zwierzaka.
 
-## What is in the starter
+Łączy marketplace, profile hodowli, społeczność, krótkie wideo w stylu TikToka (HoloFeed), czat, gry (PURRE Arcade), płatności (PURRE Coins + Stripe) i AI.
 
-| Route | File |
-| --- | --- |
-| `/` | `src/routes/index.jsx` — a server-rendered page whose loader calls a server function |
-| `GET /api/time` | `src/routes/api/time.js` — a server route: a raw HTTP endpoint next to the pages |
+## Główne funkcje (pełna specyfikacja)
 
-## Run locally
+- **Konta**: email + hasło, Google OAuth, weryfikacja email, 2FA, RODO
+- **Role**: HODOWCA / KUPUJĄCY
+- **Onboarding**: język, motyw (PURRE AURA i inne), rasy, lokalizacja
+- **Profile**: użytkownik, hodowca (weryfikacja + badge), zwierzak
+- **Weryfikacja hodowcy**: upload dokumentów, OCR (Tesseract), AI (Qwen), human-in-the-loop
+- **Marketplace**: ogłoszenia za Coins, zdjęcia + nieograniczone wideo, filtry, mapa (Haversine)
+- **Edytor wideo TikTok-style**: trim, split, merge, filtry, efekty, napisy (Whisper), muzyka
+- **HoloFeed**: full-screen pionowe wideo, swipe, autoplay, Smart Match
+- **Messenger**: 1:1, grupowy, przy ogłoszeniu, E2E (planowane)
+- **Społeczność**: grupy rasowe/regionalne
+- **Wydarzenia**: kalendarz, Event Radar, bilety za Coins
+- **PURRE Arcade**: 15+ gier, Coins, XP, rankingi, anti-cheat
+- **PURRE Coins + Stripe**: zakup pakietów, webhook, brak wypłat
+- **Reklamy**: AdSense, sponsorowane, Premium wyłącza
+- **Panele**: hodowca + admin
+- **AI**: asystent, moderacja, OCR, risk score
+- **Design**: Dark Luxury, PURRE AURA (czerń #050507, fiolet #8B5CF6, aurora #2BE39B)
+- **Deployment**: Oracle Cloud (92.5.154.243), bengos.pl / purrepets.pl, Nginx, Cloudflare
+
+## Stack
+
+- **Frontend**: Vite + React 19 + TanStack Start + Tailwind + Radix
+- **Backend**: Express + Prisma + PostgreSQL + Socket.IO + JWT
+- **Płatności**: Stripe
+- **AI / OCR**: Ollama + Qwen2.5 (planowane) / Tesseract
+- **Wideo**: FFmpeg / ffmpeg.wasm (planowane)
+
+## Uruchomienie lokalne
+
+### Frontend
+
+```bash
+npm install
+npm run dev
+```
+
+### Backend (wymaga PostgreSQL)
+
+```bash
+cd backend
+cp .env.example .env
+# Ustaw JWT_SECRET, DATABASE_URL, CORS_ORIGINS, PUBLIC_BASE_URL
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+npm run dev
+```
+
+### Pełny stack z Base44 (alternatywa)
 
 ```bash
 npm ci
-base44 login   # one-time per machine
-base44 link    # one-time per clone
-base44 dev     # local backend + app together
+base44 login
+base44 link
+base44 dev
 ```
 
-## Build and publish
+## Struktura
 
-```bash
-npm run build         # -> dist/client (assets) + dist/server (the Worker)
-base44 deploy         # or publish from the Base44 builder
-```
+- `src/` — frontend (TanStack routes)
+- `backend/` — self-hosted Express + Prisma
+- `base44/entities/` — definicje encji (Profile, Listing, Post, Pet, Wallet, ...)
 
-There is no `index.html`: the HTML document is rendered on the server from `src/routes/__root.jsx`. The build runs through the [Cloudflare Vite plugin](https://developers.cloudflare.com/workers/vite-plugin/), so dev and build both execute server code in `workerd`.
+## Status implementacji
 
-## How the pieces fit
+Wiele podstawowych funkcji (feed, listings, arcade, messaging, auth, wallet) jest już zaimplementowanych.  
+Trwają prace nad pełną zgodnością ze specyfikacją: edytor wideo, pełna weryfikacja hodowców, events, community groups, Stripe webhooks, AI service, admin panel, więcej gier.
 
-- **Pages** are files in `src/routes/`. A route's `loader` runs on the server for a document request and in the browser for a client navigation; `Route.useLoaderData()` gives the component the resolved data.
-- **Server functions** (`src/lib/server-fns.js`) are RPCs created with `createServerFn`. `src/start.js` runs every one of them through `authMiddleware`, which sends the visitor's token along, so `context.getBase44()` returns a client acting as that visitor and entity access rules apply. `context.getBase44().asServiceRole` bypasses them, so use it only after authenticating the caller (`.middleware([requireUser])`) and checking they may access the records involved: server functions and server routes are public endpoints anyone can call with any input. See **Server Security** in `AGENTS.md`. Call it only in handlers that need Base44: it reads the platform headers, and a handler that never calls it works without them.
-- **Secrets** are read in server code with `import { secrets } from "base44:runtime"` → `secrets.get("NAME")`, inside a handler. Never `process.env`.
-- **Server routes** (`src/routes/api/*.js`) are raw HTTP endpoints for URLs something other than the app's own code requests (webhooks, downloads, feeds); the app's pages call server functions. `src/start.js` runs every request through `base44RequestMiddleware`, so their `server.handlers` receive the same `context.getBase44()` (`({ request, params, context }) => …`).
-- **Server-only code** lives in `*.server.js` files (TanStack refuses to bundle them for the browser).
-- **Auth** is resolved client-side after hydration (`useAuth()`); the server is anonymous on a document request, so give per-user pages `ssr: false`.
-- **Sign-in and gated pages** are not wired in the starter: `src/components/auth/` holds the pages (login, register, password reset, MCP consent) and a login gate for `src/routes/_authed/`, to add when the app needs them. See **Adding Authentication** in `AGENTS.md`.
-- **AI**: TanStack AI is installed and runs on the Base44 AI gateway, with no API key and usage billed to the app's AI credits. `gatewayModel(context.getBase44())` in `src/lib/ai.server.js` builds the adapter; `AGENTS.md` has a streaming chat example (a server route plus `useChat`).
-- **Caching**: the platform caches only what a route opts into via `headers()` (`Cache-Control: public, s-maxage=…`). Everything else is served fresh.
+---
+
+*Pełna specyfikacja w pliku SPEC.md*

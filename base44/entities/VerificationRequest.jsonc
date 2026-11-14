@@ -1,0 +1,21 @@
+{
+  "name": "VerificationRequest",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"], "default": "PENDING" },
+    "documents": { "type": "array", "items": { "type": "string" } },
+    "ocr_data": { "type": "object" },
+    "ai_risk_score": { "type": "number" },
+    "admin_notes": { "type": "string" },
+    "reviewed_by": { "type": "string" },
+    "reviewed_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["user_id"],
+  "rls": {
+    "read": { "$or": [{ "data.user_id": "{{user.id}}" }, { "user_condition": { "role": "admin" } }] },
+    "create": { "created_by_id": "{{user.id}}" },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

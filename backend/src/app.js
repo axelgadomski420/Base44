@@ -9,6 +9,7 @@ import { gamesRouter } from "./routes/games.routes.js";
 import { rewardsRouter } from "./routes/rewards.routes.js";
 import { listingsRouter } from "./routes/listings.routes.js";
 import { assistantRouter } from "./routes/assistant.routes.js";
+import { stripeRouter } from "./routes/stripe.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 export function createApp() {
@@ -46,6 +47,7 @@ export function createApp() {
   app.use("/api/rewards", rewardsRouter);
   app.use("/api/listings", listingsRouter);
   app.use("/api/assistant", assistantRouter);
+  app.use("/api/stripe", stripeRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
