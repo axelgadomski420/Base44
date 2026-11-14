@@ -19,7 +19,8 @@ model User {
   role           String    @default("user") // "user" | "moderator" | "admin"
   email_verified Boolean   @default(false)
   banned         Boolean   @default(false)
-  premium_until  DateTime? // aktywny dostęp PREMIUM (bez reklam)
+  is_premium     Boolean   @default(false) // subskrypcja 29,99 PLN/mies. — bez reklam
+  premium_until  DateTime? // data wygaśnięcia PREMIUM
   created_date   DateTime  @default(now())
   updated_date   DateTime  @updatedAt
 
@@ -204,6 +205,9 @@ model Message {
   content         String
   media_url       String?   // zdjęcie / wideo w wiadomości
   media_type      String?   // "image" | "video"
+  ciphertext      String?   // E2E: treść zaszyfrowana AES-GCM (ECDH P-256)
+  iv              String?   // E2E: wektor inicjalizujący
+  e2e             Boolean   @default(false) // E2E: wiadomość zaszyfrowana end-to-end
   seen            Boolean   @default(false)
   delivered_at    DateTime?
   read_at         DateTime?
