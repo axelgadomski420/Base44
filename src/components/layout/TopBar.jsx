@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import Brand from "@/components/common/Brand";
 import ThemeLangMenu from "@/components/layout/ThemeLangMenu";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 export default function TopBar({ title }) {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function TopBar({ title }) {
       <Brand />
       <div className="flex items-center gap-2">
         <ThemeLangMenu />
+        <NotificationBell />
         <button
           type="button"
           onClick={() => navigate({ to: "/profile" })}

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma.js";
 import { requireAuth } from "../lib/auth.js";
 import { asyncHandler } from "../lib/errors.js";
+import { emitToUser } from "../socket/index.js";
 
 export const notificationsRouter = Router();
 
@@ -39,14 +40,15 @@ notificationsRouter.post(
   "/read-all",
   asyncHandler(async (req, res) => {
     await prisma.notification.updateMany({ where: { user_id: req.user.id, read: false }, data: { read: true } });
+    emitToUser(req.user.id, "notification:read-all", {});
     res.json({ ok: true });
   })
 );
 
-// Helper używany przez inne moduły.
+// Helper używany przez inne moduły — zapis + realtime push do dzwonka.
 export async function notify(userId, data) {
   try {
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         user_id: userId,
         type: data.type ?? "system",
@@ -58,7 +60,10 @@ export async function notify(userId, data) {
         created_by_id: data.actor_id ?? null,
       },
     });
+    emitToUser(userId, "notification:new", notification);
+    return notification;
   } catch (err) {
     console.error("notify failed:", err?.message);
+    return null;
   }
 }
