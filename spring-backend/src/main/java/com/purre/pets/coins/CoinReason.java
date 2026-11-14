@@ -11,5 +11,6 @@ public enum CoinReason {
     SPONSORED_AD,      // sponsorowane ogłoszenie reklamowe
     PREMIUM_SUBSCRIPTION, // PURRE Premium (500 / 30 dni)
     MEMBERSHIP,        // 0.4.0: pakiet PRO / ULTIMATE (paywall Reels)
+    EVENT_TICKET,      // 0.5.0: bilet na wydarzenie (Event Radar)
     ADMIN_GRANT
 }
