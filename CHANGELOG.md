@@ -1,3 +1,22 @@
+# CHANGELOG — PURRE PETS
+
+## [0.4.0] — Posty/Reels, Paywall, LLM, wyszukiwarka
+
+### Dodano
+- **Posty i Reels (M5):** `V12__posts_membership.sql` (posts, post_likes, users.plan/plan_until), `POST /posts`, publiczny `GET /posts/feed`, `/posts/mine`, polubienia (toggle), usuwanie własnych; frontend: `/posts` (feed + lightbox + ❤️), `/create` (upload max 4 mediów), `/paywall`.
+- **Pakiety członkowskie (M5):** PRO (300 🪙) i ULTIMATE (800 🪙) / 30 dni przez PURRE Coins (`/membership/status`, `/membership/purchase`); Reels wymagają PRO/ULTIMATE/PREMIUM — blokada PAYWALL_REQUIRED (403) z eleganckim przekierowaniem na paywall; downgrade zablokowany (PLAN_DOWNGRADE).
+- **Przycisk „+”:** kieruje teraz do tworzenia Postu/Reels (`/create`), nie do ogłoszenia.
+- **Gra 🔨 PURRE_WHACK (M6):** 3×3 kret, złoty kret +500, 30 s, tempo rośnie — 16. gra Arcade (anti-cheat 30000/10 s).
+- **Profesjonalna wyszukiwarka (M7):** `GET /listings/suggest` (podpowiedzi ras i miast, LIMIT 8), filtry ceny min/max, sortowanie NEWEST/PRICE_ASC/PRICE_DESC/DISTANCE, debounce 300 ms + podpowiedzi w czasie rzeczywistym (debounce 200 ms), wybór promienia; indeksy SQL `V13__search_indexes.sql` (status+species, city, breed, created_at, listing_type).
+- **LLM weryfikacja dokumentów (M2/M3):** auto-akceptacja weryfikacji hodowcy gdy ryzyko ≤ `app.ai.auto-approve-risk-score` (domyślnie 25) i usługa AI dostępna; asystent z pamięcią rozmowy (historia 6 tur, Redis TTL 30 min, sessionId per użytkownik).
+
+### Naprawiono / DevOps (M1)
+- Pipeline CI `.github/workflows/ci.yml` (backend mvn package, frontend ng build, ai-service pip install) — wcześniej brak CI.
+- Audyt deploymentu i synchronizacji: cache-buster awatara (`?v=Date.now()`), sesje i DB przez Flyway przeżywają restart — szczegóły w `DEPLOY-AUDIT.md`.
+
+### Messenger (M4)
+- Załączniki w czacie: zdjęcia/wideo/pliki przez `/media/upload`, walidacja URL `/api/media/`, podgląd z lightboxem, „📎 Załącznik” w podglądzie rozmowy.
+
 # Changelog — PURRE PETS
 
 ## [0.3.1] — Reklamy: komplet slotów, kliknięcia, panel hodowcy
