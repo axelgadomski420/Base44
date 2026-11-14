@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, Image as ImageIcon, Lock, MoreVertical, Search, Send, Smile, Trash2, Video } from "lucide-react";
+import { Check, CheckCheck, Image as ImageIcon, Loader2, Lock, MoreVertical, Search, Send, Smile, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { io } from "socket.io-client";
 import { base44, messagesApi } from "@/api/base44Client";
 import { decryptFrom, encryptFor, ensureE2eKeys } from "@/lib/e2e";
 import { cn } from "@/lib/utils";
 
 const REACTIONS = ["❤️", "😂", "😮", "😢", "👍", "🔥"];
-const ME = () => {
+const TOKEN_KEY = "purre_access_token";
+const meOf = () => {
   try {
     return JSON.parse(localStorage.getItem("purre:user") || "null");
   } catch {
@@ -15,15 +17,18 @@ const ME = () => {
 };
 
 /**
- * ChatWindow — messenger w stylu Meta/Messenger:
- *  • szyfrowanie end-to-end (ECDH P-256 + AES-GCM) — serwer nie widzi treści,
- *  • zdjęcia i wideo, statusy dostarczono/odczytano, „pisze…”,
- *  • reakcje emoji, usuwanie wiadomości, wyszukiwarka konwersacji.
+ * ChatWindow — Messenger PRO:
+ *  • E2E (ECDH P-256 + AES-GCM) — serwer nie widzi treści,
+ *  • realtime przez Socket.IO (message:new / typing / read / react / delete),
+ *  • infinite scroll historii (?before=), statusy dostarczono/odczytano,
+ *  • załączniki multimedialne, reakcje, usuwanie, wyszukiwarka.
  */
 export default function ChatWindow({ conversationId, peer, onClose }) {
-  const me = ME();
+  const me = meOf();
   const myId = me?.id ?? me?.user_id ?? null;
   const [messages, setMessages] = useState([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [typing, setTyping] = useState([]);
@@ -31,32 +36,54 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
   const [search, setSearch] = useState("");
   const [menuFor, setMenuFor] = useState(null);
   const endRef = useRef(null);
+  const topRef = useRef(null);
   const fileRef = useRef(null);
+  const listRef = useRef(null);
+  const socketRef = useRef(null);
+  const lastTypingSent = useRef(0);
   const peerId = peer?.user_id ?? peer?.id ?? null;
 
-  const decryptAll = useCallback(async (items) => {
-    return Promise.all(
-      items.map(async (m) => ({
-        ...m,
-        plain: m.e2e && m.sender_id !== myId
-          ? await decryptFrom(m.sender_id, m, { fetchKeys: (id) => base44.e2e.keys(id) })
-          : m.e2e
-            ? await decryptFrom(peerId, m, { fetchKeys: (id) => base44.e2e.keys(id) }).catch(() => m.content)
-            : m.content,
-      }))
-    );
+  const decryptOne = useCallback(async (m) => {
+    if (!m.e2e) return { ...m, plain: m.content ?? "" };
+    const senderForDecrypt = m.sender_id === myId ? peerId : m.sender_id;
+    return {
+      ...m,
+      plain: await decryptFrom(senderForDecrypt, m, { fetchKeys: (id) => base44.e2e.keys(id) }),
+    };
   }, [myId, peerId]);
 
   const load = useCallback(async () => {
     if (!conversationId) return;
     try {
       const res = await messagesApi.messages(conversationId);
-      setMessages(await decryptAll(res.items ?? []));
+      const items = await Promise.all((res.items ?? []).map(decryptOne));
+      setHasMore(!!res.has_more);
+      setMessages(items);
     } catch (err) {
       toast.error(err?.message ?? "Nie udało się wczytać rozmowy");
     }
-  }, [conversationId, decryptAll]);
+  }, [conversationId, decryptOne]);
 
+  const loadOlder = useCallback(async () => {
+    if (!conversationId || loadingOlder || !messages.length || !hasMore) return;
+    setLoadingOlder(true);
+    const list = listRef.current;
+    const prevHeight = list?.scrollHeight ?? 0;
+    try {
+      const oldest = messages[0]?.created_date;
+      const res = await messagesApi.history(conversationId, oldest);
+      const older = await Promise.all((res.items ?? []).map(decryptOne));
+      setMessages((prev) => [...older, ...prev]);
+      setHasMore(!!res.has_more);
+      requestAnimationFrame(() => {
+        if (list) list.scrollTop = list.scrollHeight - prevHeight;
+      });
+    } catch {} finally {
+      setLoadingOlder(false);
+    }
+  }, [conversationId, hasMore, loadingOlder, messages, decryptOne]);
+
+  // Init: klucze E2E + historia + socket
   useEffect(() => {
     (async () => {
       try {
@@ -69,22 +96,55 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
     })();
   }, [load]);
 
-  // Polling: nowe wiadomości + wskaźnik „pisze…”
   useEffect(() => {
-    if (!conversationId) return;
-    const timer = setInterval(() => {
-      load();
-      messagesApi.typing(conversationId).then((r) => setTyping(r.typing ?? [])).catch(() => null);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [conversationId, load]);
+    if (!conversationId) return undefined;
+    let disposed = false;
+    const socket = io(base44.socketUrl ?? window.location.origin, {
+      path: "/socket.io",
+      auth: { token: localStorage.getItem(TOKEN_KEY) },
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
+    socket.emit("subscribe", { room: `conversation:${conversationId}` });
+
+    socket.on("message:new", async (m) => {
+      if (m.conversation_id !== conversationId || disposed) return;
+      const dec = await decryptOne(m);
+      setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, dec]));
+    });
+    socket.on("message:read", ({ conversation_id, user_id }) => {
+      if (conversation_id !== conversationId || user_id === myId) return;
+      setMessages((prev) => prev.map((m) => (m.sender_id === myId ? { ...m, read: true, seen: true } : m)));
+    });
+    socket.on("message:typing", ({ conversation_id: cid, user_id, name }) => {
+      if (cid !== conversationId || user_id === myId) return;
+      setTyping([{ user_id, name }]);
+      setTimeout(() => setTyping((t) => t.filter((x) => x.user_id !== user_id)), 4000);
+    });
+    socket.on("message:react", ({ message_id, reaction }) => {
+      setMessages((prev) => prev.map((m) => (m.id === message_id ? { ...m, reactions: reaction ? [reaction] : [] } : m)));
+    });
+    socket.on("message:delete", ({ message_id }) => {
+      setMessages((prev) => prev.filter((m) => m.id !== message_id));
+    });
+
+    return () => {
+      disposed = true;
+      socket.disconnect();
+    };
+  }, [conversationId, myId, decryptOne]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length]);
 
   const signalTyping = () => {
-    if (conversationId) messagesApi.typingSignal(conversationId).catch(() => null);
+    if (!conversationId) return;
+    const now = Date.now();
+    if (now - lastTypingSent.current < 1500) return;
+    lastTypingSent.current = now;
+    socketRef.current?.emit("message:typing", { conversation_id: conversationId });
+    messagesApi.typingSignal(conversationId).catch(() => null);
   };
 
   const send = async () => {
@@ -103,7 +163,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
         payload = { conversation_id: conversationId, recipient_id: peerId, content: text };
       }
       const res = await messagesApi.send(payload);
-      setMessages((m) => [...m, { ...res.message, plain: text }]);
+      setMessages((m) => (m.some((x) => x.id === res.message.id) ? m : [...m, { ...res.message, plain: text }]));
     } catch (err) {
       setInput(text);
       toast.error(err?.message ?? "Nie udało się wysłać");
@@ -124,7 +184,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
         media_url: up.file_url,
         media_type,
       });
-      setMessages((m) => [...m, { ...res.message, plain: "" }]);
+      setMessages((m) => (m.some((x) => x.id === res.message.id) ? m : [...m, { ...res.message, plain: "" }]));
     } catch (err) {
       toast.error(err?.message ?? "Upload nie powiódł się");
     } finally {
@@ -136,7 +196,6 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
     setMenuFor(null);
     try {
       await messagesApi.react(m.id, emoji);
-      load();
     } catch {}
   };
 
@@ -160,7 +219,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
           <p className="truncate text-sm font-semibold">{peer?.display_name || peer?.name || "Rozmowa"}</p>
           <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <Lock className="h-3 w-3" /> Szyfrowanie end-to-end
-            {typing.length > 0 && <span className="ml-1 text-aura">· pisze…</span>}
+            {typing.length > 0 && <span className="ml-1 text-aura">· {typing[0].name ?? "ktoś"} pisze…</span>}
           </p>
         </div>
         <div className="relative">
@@ -179,27 +238,27 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
         )}
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+        <div ref={topRef} className="flex justify-center py-1">
+          {hasMore && (
+            <button type="button" onClick={loadOlder} className="flex items-center gap-1 rounded-full border border-border/60 px-3 py-1 text-[10px] text-muted-foreground">
+              {loadingOlder ? <Loader2 className="h-3 w-3 animate-spin" /> : null} Wczytaj starsze
+            </button>
+          )}
+        </div>
         {visible.map((m) => {
           const mine = m.sender_id === myId;
           return (
             <div key={m.id} className={cn("group flex items-end gap-1", mine ? "justify-end" : "justify-start")}>
-              {!mine && (
-                <button
-                  type="button"
-                  onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
-                  className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground opacity-0 transition group-hover:opacity-100"
-                  aria-label="Reakcja"
-                >
-                  <Smile className="h-4 w-4" />
-                </button>
-              )}
-              <div
-                className={cn(
-                  "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
-                  mine ? "bg-aura/25 text-foreground" : "bg-secondary/60 text-foreground"
-                )}
+              <button
+                type="button"
+                onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
+                className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground opacity-0 transition group-hover:opacity-100"
+                aria-label="Reakcja"
               >
+                <Smile className="h-4 w-4" />
+              </button>
+              <div className={cn("max-w-[75%] rounded-2xl px-3 py-2 text-sm", mine ? "bg-aura/25 text-foreground" : "bg-secondary/60 text-foreground")}>
                 {m.media_url && (
                   m.media_type === "video" ? (
                     <video src={m.media_url} controls className="mb-1 max-h-56 rounded-xl" />
@@ -219,16 +278,6 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
                   {mine && (m.read ? <CheckCheck className="h-3 w-3 text-aura" /> : m.delivered ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />)}
                 </div>
               </div>
-              {mine && (
-                <button
-                  type="button"
-                  onClick={() => setMenuFor(menuFor === m.id ? null : m.id)}
-                  className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground opacity-0 transition group-hover:opacity-100"
-                  aria-label="Opcje"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-              )}
               {menuFor === m.id && (
                 <div className="absolute z-10 mt-24 rounded-xl border border-border/70 bg-card p-2 shadow-xl">
                   <div className="flex gap-1">
@@ -239,11 +288,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
                     ))}
                   </div>
                   {m.sender_id === myId && (
-                    <button
-                      type="button"
-                      onClick={() => remove(m)}
-                      className="mt-2 flex w-full items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-400 hover:bg-red-500/10"
-                    >
+                    <button type="button" onClick={() => remove(m)} className="mt-2 flex w-full items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-400 hover:bg-red-500/10">
                       <Trash2 className="h-3 w-3" /> Usuń dla wszystkich
                     </button>
                   )}
@@ -268,9 +313,6 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
         />
         <button type="button" onClick={() => fileRef.current?.click()} className="grid h-10 w-10 place-items-center rounded-xl border border-border/60" aria-label="Zdjęcie lub wideo">
           <ImageIcon className="h-4 w-4" />
-        </button>
-        <button type="button" onClick={() => fileRef.current?.click()} className="hidden" aria-label="Wideo">
-          <Video className="h-4 w-4" />
         </button>
         <input
           value={input}

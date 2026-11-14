@@ -262,6 +262,8 @@ export const notificationsApi = {
 export const messagesApi = {
   conversations: (q) => request(`/api/messages/conversations${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   messages: (conversationId) => request(`/api/messages/conversations/${conversationId}/messages`),
+  history: (conversationId, before, limit = 50) =>
+    request(`/api/messages/conversations/${conversationId}/messages?before=${encodeURIComponent(before ?? "")}&limit=${limit}`),
   send: (body) => request("/api/messages/send", { method: "POST", body }),
   markRead: (id) => request(`/api/messages/${id}/read`, { method: "POST", body: {} }),
   react: (id, emoji) => request(`/api/messages/${id}/react`, { method: "POST", body: { emoji } }),
@@ -283,10 +285,12 @@ export const reelsAudioApi = {
   use: (id) => request(`/api/reels-audio/${id}/use`, { method: "POST", body: {} }),
 };
 
-// Premium (bez reklam)
+// Premium — wyłącznie subskrypcja PLN (Purre Pets PRO)
 export const premiumApi = {
   status: () => request("/api/premium/status"),
-  activate: () => request("/api/premium/activate", { method: "POST", body: {} }),
+  subscribe: (plan = "month") => request("/api/premium/subscribe", { method: "POST", body: { plan } }),
+  confirm: (sessionId) => request(`/api/premium/confirm?session_id=${encodeURIComponent(sessionId)}`),
+  proCheckout: (plan = "month") => request("/api/stripe/create-pro-checkout", { method: "POST", body: { plan } }),
 };
 
 // Zgłoszenia naruszeń
@@ -342,6 +346,9 @@ export const typingApi = {
   get: (conversationId) => request(`/api/messages/typing/${conversationId}`),
 };
 
+// URL gniazda realtime (Socket.IO) — używane przez ChatWindow.
+export const socketUrl = API_URL || window.location.origin;
+
 export const base44 = {
   auth,
   functions,
@@ -369,5 +376,7 @@ export const base44 = {
     },
   },
 };
+
+base44.socketUrl = socketUrl;
 
 export default base44;
