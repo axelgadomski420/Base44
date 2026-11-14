@@ -10,5 +10,6 @@ public enum CoinReason {
     PROFILE_BOOST,     // boost profilu (200 / 24 h)
     SPONSORED_AD,      // sponsorowane ogłoszenie reklamowe
     PREMIUM_SUBSCRIPTION, // PURRE Premium (500 / 30 dni)
+    MEMBERSHIP,        // 0.4.0: pakiet PRO / ULTIMATE (paywall Reels)
     ADMIN_GRANT
 }

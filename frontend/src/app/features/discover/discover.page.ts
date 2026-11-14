@@ -19,6 +19,7 @@ interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: strin
   <header class="px-5 pt-6 pb-2 flex items-center justify-between">
     <h1 class="text-3xl font-extrabold tracking-tight">PURRE <span style="color: var(--accent)">PETS</span></h1>
     <a routerLink="/feed" class="purre-badge">🎬 HoloFeed</a>
+    <a routerLink="/posts" class="purre-badge">📝 Posty</a>
   </header>
   <p class="px-5 purre-muted text-sm pb-2">{{ i18n.t('discover.nearby') }} · 50 km</p>
 

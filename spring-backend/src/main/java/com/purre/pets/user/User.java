@@ -49,6 +49,13 @@ public class User {
     @Column(name = "premium_until")
     private Instant premiumUntil;
 
+    /** 0.4.0: pakiet członkowski FREE / PRO / ULTIMATE (paywall Reels). */
+    @Column(nullable = false, length = 20)
+    private String plan = "FREE";
+
+    @Column(name = "plan_until")
+    private Instant planUntil;
+
     @Column(name = "totp_secret", length = 64)
     private String totpSecret;
 
