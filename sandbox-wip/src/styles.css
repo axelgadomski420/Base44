@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", serif;
+  --color-paper: #f3eee6;
+  --color-ink: #1c1712;
+  --color-muted: #6f675e;
+  --color-line: #e3d9cc;
+  --color-card: #fffcf7;
+  --color-accent: #9d3b28;
+  --color-accent-soft: #f6e6df;
+  --color-on-accent: #fffaf6;
+  --color-gold: #8c6a2f;
+  --color-cream: #f6f1e8;
+  --color-night: #110e0c;
+  --color-night-card: #1c1815;
+  --color-night-line: #2c261f;
+  --radius-card: 1.5rem;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-paper);
+    color: var(--color-ink);
+    min-height: 100dvh;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes reel-drift {
+  from { transform: scale(1); }
+  to { transform: scale(1.06); }
+}
+
+.reel-drift {
+  animation: reel-drift 14s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reel-drift { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
