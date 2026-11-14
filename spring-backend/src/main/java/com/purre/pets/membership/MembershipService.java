@@ -17,6 +17,7 @@ import java.time.Instant;
  * Pakiety członkowskie (0.4.0): FREE / PRO (300 🪙) / ULTIMATE (800 🪙) — 30 dni.
  * PURRE Premium (500 🪙) pozostaje osobnym produktem (bez reklam).
  * Reels wymagają PRO/ULTIMATE/PREMIUM.
+ * 0.5.0: ULTIMATE daje cotygodniowy boost profilu (perk przy zakupie), statystyki dla PRO+.
  */
 @Slf4j
 @Service
@@ -59,6 +60,10 @@ public class MembershipService {
         coinService.spend(userId, cost, CoinReason.MEMBERSHIP, "membership:" + plan + ":" + userId + ":" + now.toEpochMilli());
         u.setPlan(plan);
         u.setPlanUntil(until);
+        if ("ULTIMATE".equals(plan)) {
+            // Perk ULTIMATE: cotygodniowy boost profilu (widoczność w rankingach/odkrywaniu)
+            u.setBoostedUntil(now.plusSeconds(7 * 24L * 3600));
+        }
         userRepository.save(u);
         log.info("Pakiet {} aktywowany dla user={} do {}.", plan, userId, until);
         return status(userId);
@@ -68,6 +73,12 @@ public class MembershipService {
     public boolean hasReelAccess(Long userId) {
         return userRepository.findById(userId).map(u -> isActive(u)
                 || (u.getPremiumUntil() != null && u.getPremiumUntil().isAfter(Instant.now()))).orElse(false);
+    }
+
+    /** 0.5.0: dostęp do statystyk hodowcy — PRO, ULTIMATE lub PREMIUM. */
+    @Transactional(readOnly = true)
+    public boolean hasStatsAccess(Long userId) {
+        return hasReelAccess(userId);
     }
 
     private boolean isActive(User u) {

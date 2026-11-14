@@ -1,11 +1,14 @@
 package com.purre.pets.breeder;
 
+import com.purre.pets.common.ApiException;
 import com.purre.pets.follow.Follow;
 import com.purre.pets.follow.FollowId;
 import com.purre.pets.follow.FollowRepository;
 import com.purre.pets.listing.Listing;
 import com.purre.pets.listing.ListingRepository;
 import com.purre.pets.listing.ListingStatus;
+import com.purre.pets.membership.MembershipService;
+import com.purre.pets.post.PostRepository;
 import com.purre.pets.user.User;
 import com.purre.pets.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +27,8 @@ public class BreederService {
     private final UserRepository userRepository;
     private final FollowRepository followRepository;
     private final ListingRepository listingRepository;
+    private final PostRepository postRepository;
+    private final MembershipService membershipService;
 
     @Transactional(readOnly = true)
     public BreederProfileDto profile(Long breederId, Long currentUserId) {
@@ -72,6 +78,28 @@ public class BreederService {
     public BreederProfileDto unfollow(Long currentUserId, Long breederId) {
         followRepository.deleteById(new FollowId(currentUserId, breederId));
         return profile(breederId, currentUserId);
+    }
+
+    /**
+     * 0.5.0: statystyki hodowcy — pakiet PRO/ULTIMATE/PREMIUM (paywall dla FREE).
+     * Ogłoszenia wg statusu, polubienia postów, obserwujący.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> stats(Long breederId) {
+        if (!membershipService.hasStatsAccess(breederId)) {
+            throw ApiException.forbidden("PAYWALL_REQUIRED",
+                    "Statystyki są dostępne w pakietach PRO, ULTIMATE i PREMIUM.");
+        }
+        long active = listingRepository.countByBreederIdAndStatus(breederId, ListingStatus.ACTIVE);
+        long sold = listingRepository.countByBreederIdAndStatus(breederId, ListingStatus.SOLD);
+        long likes = postRepository.sumLikesByUserId(breederId);
+        long followers = followRepository.countByIdBreederId(breederId);
+        return Map.of(
+                "activeListings", active,
+                "soldListings", sold,
+                "postLikes", likes,
+                "followers", followers
+        );
     }
 
     /**

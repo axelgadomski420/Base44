@@ -47,9 +47,7 @@ public class AdController {
     @GetMapping("/mine")
     @PreAuthorize("hasRole('BREEDER')")
     public List<AdDto> mine(@AuthenticationPrincipal UserPrincipal principal) {
-        return adService.mine(principal.id()).stream()
-                .map(c -> new AdDto(c.getId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(), c.getType().name()))
-                .toList();
+        return adService.mine(principal.id()).stream().map(AdDto::from).toList();
     }
 
     public record CreateManagedRequest(

@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * System reklam: sponsorowane ogłoszenia hodowców (PURRE Coins), partnerzy, sloty AdSense.
  * Zasady: nie zasłaniają treści, oznaczone „Sponsorowane", rotacja 1 na 5–7 interakcji (capping po stronie UI),
  * wyłączone dla PURRE Premium. Zgodność RODO: bez profilowania, impression i click anonimowe.
+ * 0.5.0: AdDto zwraca impressions + clicks — CTR widoczny w panelu hodowcy.
  */
 @Slf4j
 @Service
@@ -121,9 +122,11 @@ public class AdService {
         return campaignRepository.save(c);
     }
 
-    public record AdDto(Long id, String title, String imageUrl, String targetUrl, String type) {
+    public record AdDto(Long id, String title, String imageUrl, String targetUrl, String type,
+                        long impressions, long clicks) {
         public static AdDto from(AdCampaign c) {
-            return new AdDto(c.getId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(), c.getType().name());
+            return new AdDto(c.getId(), c.getTitle(), c.getImageUrl(), c.getTargetUrl(), c.getType().name(),
+                    c.getImpressions(), c.getClicks());
         }
     }
 }
