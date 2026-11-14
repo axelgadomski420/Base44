@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class CoinsController {
 
     private final CoinService coinService;
+    private final CoinTransactionRepository txRepository;
     private final StripeCheckoutService stripeService;
     private final RateLimiter rateLimiter;
 
@@ -33,37 +34,9 @@ public class CoinsController {
     public Page<TransactionDto> transactions(@AuthenticationPrincipal UserPrincipal principal,
                                              @RequestParam(defaultValue = "0") int page,
                                              @RequestParam(defaultValue = "20") int size) {
-        return coinService != null
-                ? transactionsInternal(principal.id(), page, Math.min(size, 100))
-                : Page.empty();
-    }
-
-    private Page<TransactionDto> transactionsInternal(Long userId, int page, int size) {
-        return coinServicePage(userId, page, size);
-    }
-
-    private Page<TransactionDto> coinServicePage(Long userId, int page, int size) {
-        return txPage(userId, page, size);
-    }
-
-    private Page<TransactionDto> txPage(Long userId, int page, int size) {
-        return transactionsRepo(userId, page, size);
-    }
-
-    private Page<TransactionDto> transactionsRepo(Long userId, int page, int size) {
-        return transactionPage(userId, page, size);
-    }
-
-    private Page<TransactionDto> transactionPage(Long userId, int page, int size) {
-        return coinTransactionRepository().findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size))
+        return txRepository.findByUserIdOrderByCreatedAtDesc(principal.id(), PageRequest.of(page, Math.min(size, 100)))
                 .map(TransactionDto::from);
     }
-
-    private com.purre.pets.coins.CoinTransactionRepository coinTransactionRepository() {
-        return txRepo;
-    }
-
-    private final com.purre.pets.coins.CoinTransactionRepository txRepo;
 
     @PostMapping("/purchase")
     public PurchaseResponse purchase(@AuthenticationPrincipal UserPrincipal principal,
