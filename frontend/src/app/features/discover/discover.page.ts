@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { DecimalPipe } from '@angular/common';
 import { ApiService } from '../../core/api.service';
 import { I18nService } from '../../core/i18n.service';
 
@@ -13,11 +14,11 @@ interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: strin
 @Component({
   selector: 'purre-discover',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, DecimalPipe],
   template: `
   <header class="px-5 pt-6 pb-2">
     <h1 class="text-3xl font-extrabold tracking-tight">PURRE <span style="color: var(--accent)">PETS</span></h1>
-    <p class="purre-muted text-sm mt-1">{{ i18n.t('discover.nearby') }} · {{ radius }} km</p>
+    <p class="purre-muted text-sm mt-1">{{ i18n.t('discover.nearby') }} · 50 km</p>
   </header>
 
   <section class="px-5 grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -54,7 +55,6 @@ interface AdDto { id: number; title: string; imageUrl?: string; targetUrl: strin
 export class DiscoverPage implements OnInit {
   readonly items = signal<ListingDto[]>([]);
   readonly ad = signal<AdDto | null>(null);
-  radius = 50;
 
   constructor(private api: ApiService, readonly i18n: I18nService) {}
 
@@ -77,7 +77,7 @@ export class DiscoverPage implements OnInit {
   }
 
   private load(lat: number, lng: number): void {
-    this.api.get<ListingDto[]>('/listings', { lat, lng, lng2: undefined, radiusKm: this.radius })
+    this.api.get<ListingDto[]>('/listings', { lat, lng, radiusKm: 50 })
       .subscribe({ next: (items) => this.items.set(items), error: () => this.items.set([]) });
     this.api.get<AdDto>('/ads/serve', { placement: 'DISCOVER' })
       .subscribe({ next: (ad) => this.ad.set(ad), error: () => this.ad.set(null) });

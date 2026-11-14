@@ -19,6 +19,11 @@ export class ApiService {
       .pipe(this.err());
   }
 
+  getBlob(path: string): Observable<Blob> {
+    return this.http.get(environment.apiUrl + path, { responseType: 'blob' })
+      .pipe(this.err() as unknown as Observable<Blob>);
+  }
+
   post<T>(path: string, body?: unknown): Observable<T> {
     return this.http.post<T>(environment.apiUrl + path, body).pipe(this.err());
   }

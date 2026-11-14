@@ -6,8 +6,8 @@ import { I18nService } from '../../core/i18n.service';
 
 interface VerificationDto {
   id: number; status: string; kennelNumber: string; kennelUnion: string;
-  riskScore?: number; aiAnalysis?: string; createdAt: string; userEmail?: string;
-  documents: { id: number; docType: string; originalFilename: string }[];
+  riskScore?: number; aiAnalysis?: string; createdAt: string;
+  documents: { id: number; docType: string; fileName: string }[];
 }
 
 @Component({
@@ -23,18 +23,16 @@ interface VerificationDto {
         <div class="flex justify-between items-start">
           <div>
             <p class="font-bold">{{ v.kennelNumber }} · {{ v.kennelUnion }}</p>
-            <p class="text-xs purre-muted">{{ v.userEmail }} · {{ v.createdAt | date:'short' }}</p>
+            <p class="text-xs purre-muted">Złożono: {{ v.createdAt | date:'short' }}</p>
           </div>
           <span class="purre-badge">{{ v.status }}</span>
         </div>
-        @if (v.riskScore != null) {
-          <p class="text-sm">Risk score: <b>{{ v.riskScore }}/100</b></p>
-        }
+        @if (v.riskScore != null) { <p class="text-sm">Risk score: <b>{{ v.riskScore }}/100</b></p> }
         @if (v.aiAnalysis) { <p class="text-sm purre-muted">{{ v.aiAnalysis }}</p> }
         <div>
           @for (doc of v.documents; track doc.id) {
-            <button (click)="download(doc.id, doc.originalFilename)" class="text-sm underline mr-3" style="color: var(--accent)">
-              📄 {{ doc.originalFilename }}
+            <button (click)="download(doc.id, doc.fileName)" class="text-sm underline mr-3" style="color: var(--accent)">
+              📄 {{ doc.fileName }}
             </button>
           }
         </div>
@@ -58,7 +56,7 @@ export class AdminVerificationsPage implements OnInit {
 
   ngOnInit(): void {
     this.api.get<VerificationDto[]>('/admin/verifications').subscribe({
-      next: (r) => this.items.set(r.content ?? r), error: () => this.items.set([])
+      next: (r) => this.items.set(r), error: () => this.items.set([])
     });
   }
 

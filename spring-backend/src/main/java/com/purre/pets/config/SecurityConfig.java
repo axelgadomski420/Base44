@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -21,6 +22,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -54,7 +56,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/listings/**", "/ads/serve", "/arcade/leaderboard").permitAll()
                 .requestMatchers("/stripe/webhook").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
-                .requestMatchers("/breeder/**", "/verification/**", "/arcade/**").authenticated()
+                .requestMatchers("/verification/**", "/arcade/**", "/coins/**", "/purchases/**",
+                                 "/listings/mine", "/listings/boost-profile", "/media/upload").authenticated()
                 .anyRequest().authenticated())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

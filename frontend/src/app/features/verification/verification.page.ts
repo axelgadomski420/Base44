@@ -6,8 +6,8 @@ import { I18nService } from '../../core/i18n.service';
 
 interface VerificationDto {
   id: number; status: string; kennelNumber?: string; kennelUnion?: string;
-  riskScore?: number; rejectionReason?: string; aiAnalysis?: string; createdAt: string;
-  documents: { id: number; docType: string; originalFilename: string }[];
+  riskScore?: number; aiAnalysis?: string; rejectionReason?: string; createdAt: string;
+  documents: { id: number; docType: string; fileName: string }[];
 }
 
 @Component({
@@ -25,14 +25,12 @@ interface VerificationDto {
         <p class="text-xs purre-muted">Złożono: {{ v.createdAt | date:'short' }}</p>
         @if (v.riskScore != null) { <p class="text-sm">Risk score AI: {{ v.riskScore }}/100</p> }
         @if (v.aiAnalysis) { <p class="text-sm purre-muted">{{ v.aiAnalysis }}</p> }
-        @if (v.status === 'REJECTED' && v.rejectionReason) {
-          <p class="purre-error">{{ v.rejectionReason }}</p>
-        }
+        @if (v.status === 'REJECTED' && v.rejectionReason) { <p class="purre-error">{{ v.rejectionReason }}</p> }
         <div class="pt-2">
           <p class="text-sm font-semibold mb-1">Dokumenty</p>
           @for (doc of v.documents; track doc.id) {
-            <button (click)="download(doc.id, doc.originalFilename)" class="block text-sm underline mb-1" style="color: var(--accent)">
-              📄 {{ doc.docType }} — {{ doc.originalFilename }}
+            <button (click)="download(doc.id, doc.fileName)" class="block text-sm underline mb-1" style="color: var(--accent)">
+              📄 {{ doc.docType }} — {{ doc.fileName }}
             </button>
           }
         </div>
@@ -53,8 +51,7 @@ interface VerificationDto {
           <input class="purre-input mt-1" name="kennelNumber" [(ngModel)]="kennelNumber" required>
         </label>
         <label class="block text-sm">Związek / klub
-          <input class="purre-input mt-1" name="kennelUnion" [(ngModel)]="kennelUnion" required
-            placeholder="np. ZKwP, FCI">
+          <input class="purre-input mt-1" name="kennelUnion" [(ngModel)]="kennelUnion" required placeholder="np. ZKwP, FCI">
         </label>
         <label class="block text-sm">Dokumenty (min. 3, max 20 plików, JPG/PNG/WEBP/PDF, 10 MB)
           <input class="mt-1 text-sm" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf"
@@ -101,16 +98,16 @@ export class VerificationPage implements OnInit {
       kennelNumber: this.kennelNumber, kennelUnion: this.kennelUnion, rodoConsent: this.rodo
     })], { type: 'application/json' }));
     for (const file of this.files()) form.append('files', file);
-    this.api.postMultipart<{ id: number }>('/verification', form).subscribe({
-      next: () => this.ngOnInit(),
+    this.api.postMultipart<VerificationDto>('/verification', form).subscribe({
+      next: (v) => { this.verification.set(v); this.busy.set(false); },
       error: (e) => { this.error.set(e instanceof ApiError ? e.message : 'Błąd wysyłki.'); this.busy.set(false); }
     });
   }
 
   appeal(): void {
     this.busy.set(true);
-    this.api.post('/verification/appeal', { reason: this.appealText }).subscribe({
-      next: () => this.ngOnInit(),
+    this.api.post<VerificationDto>('/verification/appeal', { reason: this.appealText }).subscribe({
+      next: (v) => { this.verification.set(v); this.busy.set(false); },
       error: (e) => { this.error.set(e instanceof ApiError ? e.message : 'Błąd.'); this.busy.set(false); }
     });
   }

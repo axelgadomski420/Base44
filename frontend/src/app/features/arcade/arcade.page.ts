@@ -1,15 +1,14 @@
 import { Component, OnInit, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
-import { ApiService } from '../../core/api.service';
+import { ApiService, ApiError } from '../../core/api.service';
 import { Game2048Component } from './game-2048';
 
-interface LeaderRow { userId: number; displayName: string; totalScore: number; }
-interface DailyState { claimedToday: boolean; streak: number; }
+interface LeaderRow { rank: number; userId: number; displayName: string; totalScore: number; weeklyBonus: boolean; }
+interface DailyResult { coins: number; streak: number; balance: number; }
 
 @Component({
   selector: 'purre-arcade',
   standalone: true,
-  imports: [DatePipe, Game2048Component],
+  imports: [Game2048Component],
   template: `
   <div class="px-5 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
     <header class="flex items-center justify-between">
@@ -17,12 +16,10 @@ interface DailyState { claimedToday: boolean; streak: number; }
       <span class="purre-badge">XP: {{ xp() }}</span>
     </header>
 
-    <button class="purre-card p-4 w-full text-left" (click)="claimDaily()" [disabled]="daily()?.claimedToday">
+    <button class="purre-card p-4 w-full text-left" (click)="claimDaily()" [disabled]="claiming()">
       <p class="font-bold">🎁 Dzienny bonus — 20 🪙</p>
-      <p class="text-xs purre-muted mt-1">
-        @if (daily()?.claimedToday) { Odebrano dzisiaj. Seria: {{ daily()?.streak }} dni. }
-        @else { Odbierz +10 🪙 za każdy dzień z rzędu. }
-      </p>
+      <p class="text-xs purre-muted mt-1">+10 🪙 za każdy dzień z rzędu (do 8 dni).</p>
+      @if (dailyMsg()) { <p class="text-xs mt-1" style="color: var(--accent-2)">{{ dailyMsg() }}</p> }
     </button>
 
     <purre-game-2048></purre-game-2048>
@@ -38,10 +35,10 @@ interface DailyState { claimedToday: boolean; streak: number; }
 
     <section>
       <h2 class="font-bold mb-2">🏆 Ranking tygodniowy</h2>
-      @for (row of leaderboard(); track row.userId; let i = $index) {
+      @for (row of leaderboard(); track row.userId) {
         <div class="purre-card p-3 flex justify-between text-sm">
-          <span>{{ i + 1 }}. {{ row.displayName }}</span>
-          <span class="purre-badge">{{ row.totalScore }}</span>
+          <span>{{ row.rank }}. {{ row.displayName }}</span>
+          <span class="purre-badge">{{ row.totalScore }}{{ row.weeklyBonus ? ' 🎁' : '' }}</span>
         </div>
       } @empty { <p class="purre-muted text-sm">—</p> }
     </section>
@@ -50,19 +47,30 @@ interface DailyState { claimedToday: boolean; streak: number; }
 })
 export class ArcadePage implements OnInit {
   readonly soon = ['🧩 Memory', '❓ Quiz', '⬡ Hex', '🐍 Snake', '🧱 Tetris', '🐦 Flappy', '🏃 Runner', '💎 Match-3', '🔤 Wordle', '🎨 Coloring', '🦘 Jump', '🫧 Bubble', '🖼️ Puzzle'];
-  readonly daily = signal<DailyState | null>(null);
   readonly leaderboard = signal<LeaderRow[]>([]);
   readonly xp = signal(0);
+  readonly claiming = signal(false);
+  readonly dailyMsg = signal('');
 
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
-    this.api.get<DailyState>('/arcade/daily').subscribe({ next: (d) => this.daily.set(d), error: () => undefined });
-    this.api.get<LeaderRow[]>('/arcade/leaderboard').subscribe({ next: (l) => this.leaderboard.set(l.content ?? l), error: () => undefined });
+    this.api.get<LeaderRow[]>('/arcade/leaderboard').subscribe({ next: (l) => this.leaderboard.set(l), error: () => undefined });
     this.api.get<{ xp: number }>('/arcade/xp').subscribe({ next: (x) => this.xp.set(x.xp), error: () => undefined });
   }
 
   claimDaily(): void {
-    this.api.post('/arcade/daily', {}).subscribe({ next: () => this.ngOnInit() });
+    this.claiming.set(true); this.dailyMsg.set('');
+    this.api.post<DailyResult>('/arcade/daily', {}).subscribe({
+      next: (res) => {
+        this.dailyMsg.set('Odebrano ' + res.coins + ' 🪙 · seria ' + res.streak + ' dni.');
+        this.claiming.set(false);
+        this.ngOnInit();
+      },
+      error: (e) => {
+        this.dailyMsg.set(e instanceof ApiError && e.code === 'ALREADY_CLAIMED' ? 'Bonus odebrany — wróć jutro.' : 'Nie udało się odebrać bonusu.');
+        this.claiming.set(false);
+      }
+    });
   }
 }
