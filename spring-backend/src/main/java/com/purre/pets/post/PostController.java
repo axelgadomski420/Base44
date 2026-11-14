@@ -17,11 +17,13 @@ public class PostController {
 
     private final PostService postService;
 
-    public record CreatePostRequest(String caption, String postType, List<MediaInput> media) {}
+    public record CreatePostRequest(String caption, String postType, List<MediaInput> media,
+                                    String soundId, String filterId) {}
 
     @PostMapping
     public PostDto create(@AuthenticationPrincipal UserPrincipal principal, @RequestBody CreatePostRequest req) {
-        return postService.create(principal.id(), req.caption(), req.postType(), req.media());
+        return postService.create(principal.id(), req.caption(), req.postType(), req.media(),
+                req.soundId(), req.filterId());
     }
 
     /** Publiczny feed postów (jak ogłoszenia). */

@@ -27,6 +27,14 @@ public class Post {
     @Column(name = "media_json", columnDefinition = "TEXT")
     private String mediaJson;
 
+    /** 0.5.0: dźwięk z biblioteki PURRE Sounds (id z frontendu, np. "aurora"). */
+    @Column(name = "sound_id", length = 64)
+    private String soundId;
+
+    /** 0.5.0: filtr CSS (np. "AURORA") nakładany na media w feedzie. */
+    @Column(name = "filter_id", length = 32)
+    private String filterId;
+
     @Column(nullable = false)
     private int likes;
 

@@ -12,12 +12,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Posty i Reels (0.4.0): social layer nad marketplace.
- * POST — dla każdego zalogowanego. REEL — tylko pakiety PRO/ULTIMATE/PREMIUM (paywall).
+ * Posty i Reels (0.4.0) + Reels Studio (0.5.0): dźwięki z biblioteki PURRE Sounds
+ * i filtry CSS nakładane na media (jak TikTok). REEL — tylko PRO/ULTIMATE/PREMIUM (paywall).
  */
 @Slf4j
 @Service
@@ -37,10 +36,12 @@ public class PostService {
     public record MediaDto(String url, String mediaType) {}
 
     public record PostDto(Long id, Long userId, String userName, String caption, String postType,
-                          List<MediaDto> media, int likes, boolean likedByMe, Instant createdAt) {}
+                          List<MediaDto> media, String soundId, String filterId, String planBadge,
+                          int likes, boolean likedByMe, Instant createdAt) {}
 
     @Transactional
-    public PostDto create(Long userId, String caption, String postType, List<MediaInput> media) {
+    public PostDto create(Long userId, String caption, String postType, List<MediaInput> media,
+                          String soundId, String filterId) {
         String type = "POST".equalsIgnoreCase(postType) ? "POST" : "REEL";
         if (type.equals("REEL") && !membershipService.hasReelAccess(userId)) {
             throw ApiException.forbidden("PAYWALL_REQUIRED",
@@ -56,16 +57,20 @@ public class PostService {
         if (type.equals("REEL") && safeMedia.stream().noneMatch(m -> "VIDEO".equalsIgnoreCase(m.mediaType()))) {
             throw ApiException.badRequest("REEL_VIDEO_REQUIRED", "Reel wymaga co najmniej jednego wideo.");
         }
+        String safeSound = soundId == null || soundId.isBlank() ? null : soundId.trim().substring(0, Math.min(64, soundId.trim().length()));
+        String safeFilter = filterId == null || filterId.isBlank() ? null : filterId.trim().toUpperCase().substring(0, Math.min(32, filterId.trim().length()));
         Instant now = Instant.now();
         Post post = postRepository.save(Post.builder()
                 .userId(userId)
                 .caption(caption.trim().substring(0, Math.min(MAX_CAPTION, caption.trim().length())))
                 .postType(type)
                 .mediaJson(toJson(safeMedia))
+                .soundId(safeSound)
+                .filterId(safeFilter)
                 .likes(0)
                 .createdAt(now)
                 .build());
-        log.info("Post id={} ({}) użytkownika {}", post.getId(), type, userId);
+        log.info("Post id={} ({}) użytkownika {}, dźwięk={}, filtr={}", post.getId(), type, userId, safeSound, safeFilter);
         return toDto(post, userId);
     }
 
@@ -108,11 +113,22 @@ public class PostService {
         postRepository.delete(post);
     }
 
+    /** Badge pakietu autora: PREMIUM > ULTIMATE > PRO > FREE. */
+    private String planBadgeOf(User u) {
+        if (u.getPremiumUntil() != null && u.getPremiumUntil().isAfter(Instant.now())) return "PREMIUM";
+        boolean active = u.getPlanUntil() != null && u.getPlanUntil().isAfter(Instant.now())
+                && ("PRO".equals(u.getPlan()) || "ULTIMATE".equals(u.getPlan()));
+        return active ? u.getPlan() : "FREE";
+    }
+
     private PostDto toDto(Post p, Long viewerId) {
-        String userName = userRepository.findById(p.getUserId()).map(User::getDisplayName).orElse("Użytkownik");
+        User author = userRepository.findById(p.getUserId()).orElse(null);
+        String userName = author != null ? author.getDisplayName() : "Użytkownik";
+        String badge = author != null ? planBadgeOf(author) : "FREE";
         boolean likedByMe = viewerId != null && likeRepository.existsByPostIdAndUserId(p.getId(), viewerId);
         return new PostDto(p.getId(), p.getUserId(), userName, p.getCaption(), p.getPostType(),
-                fromJson(p.getMediaJson()), p.getLikes(), likedByMe, p.getCreatedAt());
+                fromJson(p.getMediaJson()), p.getSoundId(), p.getFilterId(), badge,
+                p.getLikes(), likedByMe, p.getCreatedAt());
     }
 
     private String toJson(List<MediaInput> media) {
