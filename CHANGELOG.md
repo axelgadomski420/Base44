@@ -1,20 +1,37 @@
-# CHANGELOG — PURRE PETS
+# Changelog — PURRE PETS
 
-## [0.1.0] — 2026-11-14 — feature/purre-pets
+## [0.1.0] — Faza 1: Fundament (feature/purre-pets)
 
-### Dodane
-- Fundament backendu: Spring Boot 3.5 / Java 17 / MySQL 8 / Flyway / Spring Security + JWT (role BUYER, BREEDER, ADMIN), WebSocket/STOMP, globalna obsługa błędów, rate limiting.
-- Rejestracja z wyborem roli (HODOWCA / KUPUJĄCY), logowanie JWT, profil `/api/auth/me`.
-- **Weryfikacja legalności hodowli:** upload dokumentów (rejestracja ZKwP/FCI, dowód, zaświadczenie, dokumenty legalności, zdjęcia warunków — opcjonalnie, zgoda RODO), szyfrowanie AES-256-GCM w spoczynku, OCR + analiza ryzyka przez ai-service (Tesseract + Qwen2.5:3b), human-in-the-loop (admin zatwierdza/odrzuca), statusy PENDING/APPROVED/REJECTED, badge „Zweryfikowany hodowca", historia decyzji i odwołania, retencja dokumentów 30 dni po decyzji (RODO), log dostępu do dokumentów.
-- **PURRE Coins:** portfel + ledger append-only (saldo = suma księgi), wydawanie z blokadą wiersza, idempotencja, pakiety: 100/9,99 zł, 500/39,99 zł, 1000/69,99 zł, 5000/299,99 zł.
-- **Stripe Checkout** (PLN): tworzenie sesji, webhook z weryfikacją podpisu, idempotentne zasilenie portfela, zapis transakcji, e-mail potwierdzający, historia zakupów, rate limiting, obsługa błędów i retry.
-- **Ogłoszenia:** tylko zweryfikowany hodowca; koszt 50 coins (wyróżnienie 100 / 7 dni, boost profilu 200 / 24 h); 6–20 zdjęć + wideo; wyszukiwanie Haversine po odległości; paginacja.
-- **PURRE Arcade (ekonomia backendowa):** wyniki gier z anti-cheat (limity per gra, minimalny czas, dzienny limit coins), dzienny bonus 20 + streak 10, XP, ranking tygodniowy.
-- **System reklam (backend):** kampanie sponsorowane (50 coins/24 h, 200 coins/7 dni), rotacja z cappingiem, typy SPONSORED/PARTNER/ADSENSE.
-- **ai-service:** FastAPI + Tesseract OCR + Ollama Qwen2.5:3b + Redis; endpointy /ocr, /verify-analysis, /moderate; limity RAM/timeout, fallback na reguły.
-- **Frontend Angular 18:** shell PURRE AURA, 8 motywów, i18n pl/en, auth (rejestracja z rolą + upload dokumentów), Discover, portfel + zakup coins (Stripe), kreator weryfikacji, dodawanie ogłoszenia (6–20 zdjęć, drag&drop), panel admina (kolejka weryfikacji), hub Arcade.
-- **Deploy:** idempotentny `deploy/install.sh` (Java 17, MySQL 8, Node 20, Nginx, Certbot, Ollama + Qwen2.5:3b, FastAPI, Redis, systemd, firewall, backupy), konfiguracja Nginx i systemd, DEPLOY.md, TEST_PLAN.md.
+### Dodano
+- **Backend (Spring Boot 3.5, Java 17, MySQL, Flyway):**
+  - Auth: rejestracja z rolą HODOWCA (BREEDER) / KUPUJĄCY (BUYER) + zgoda RODO, JWT, rate limiting.
+  - Weryfikacja legalności hodowli: dokumenty AES-256-GCM, OCR (Tesseract) + AI (Qwen2.5 3B) risk score,
+    human-in-the-loop (admin zatwierdza), statusy PENDING/APPROVED/REJECTED, badge, odwołania,
+    retencja RODO 30 dni (scheduler 4:00), log dostępu do dokumentów.
+  - PURRE Coins: ledger append-only z idempotencją, pakiety, koszty (ogłoszenie 50, wyróżnienie 100, boost 200).
+  - Stripe Checkout (PLN): webhook z weryfikacją podpisu, idempotencja, e-mail, historia zakupów.
+  - Ogłoszenia: tylko zweryfikowany hodowca, 6–20 zdjęć + max 3 wideo, Haversine (SQL), wyróżnienia/boost.
+  - PURRE Arcade: 15 gier (reguły anti-cheat backendowe), dzienny bonus 20 + streak 10, cap 300/dzień,
+    ranking tygodniowy TOP 10, XP.
+  - Reklamy: sponsorowane ogłoszenia (50 coins/24 h, 200 coins/7 dni), partnerzy, AdSense, rotacja.
+- **AI Service (FastAPI + Ollama Qwen2.5 3B + Tesseract + Redis):** OCR, analiza ryzyka z fallbackiem na heurystyki, moderacja.
+- **Frontend (Angular 18 standalone + Tailwind):**
+  - 8 motywów (domyślny PURRE AURA — Dark Luxury), i18n pl (domyślny) / en.
+  - Strony: login/rejestracja z wyborem roli, Discover (geolokalizacja + reklamy), Explore (wyszukiwarka),
+    szczegóły ogłoszenia (galeria + lightbox), dodawanie ogłoszenia (drag&drop, limity, obsługa braku Coins),
+    portfel (pakiety → Stripe, transakcje, historia), weryfikacja hodowcy (upload/status/odwołanie),
+    profil (motywy, język, moje ogłoszenia, wyróżnianie/boost), panel admina (kolejka weryfikacji),
+    Arcade z grywalnym PURRE 2048, Messenger (szkielet fazy 2).
+  - Dolne menu: Discover | Explore | Dodaj | Messenger | Arcade | Profil.
+- **Deploy:** idempotentny `deploy/install.sh` (Oracle Ubuntu 24.04: Java 17, MySQL 8, Node 20, Nginx,
+  Certbot, Redis, Ollama + Qwen2.5 3B, systemd `bengos`/`bengos-ai`, firewall 80/443, backupy),
+  `deploy/nginx.conf`, `DEPLOY.md`, `TEST_PLAN.md`.
 
-### Uwagi
-- Stary katalog `backend/` (Node/Prisma) oznaczony jako legacy — nie rozwijany.
-- Faza 2–4 (Messenger, HoloFeed, Smart Match, Adopcje+AI, 15 gier, edytor wideo) — plan w AUDIT.md §3.
+### Bezpieczeństwo
+- `@EnableMethodSecurity` + `@PreAuthorize` na kontrolerach, JWT BCrypt(12), szyfrowanie dokumentów w spoczynku,
+  webhook Stripe podpisany, idempotencja płatności, rate limiting, brak hazardu i wypłat Coins.
+
+### Fazy kolejne (plan w AUDIT.md §3)
+- Faza 2: BENGOS Messenger (STOMP 1:1 + grupy, typing/seen), HoloFeed (wideo, miniatury, HLS).
+- Faza 3: Smart Match (paw-match), Adopcje + PURRE Assistant (Adoptek), Elasticsearch.
+- Faza 4: pozostałe 14 gier Arcade, edytor wideo/dźwięku, 2FA, sesje, eksport RODO, PURRE Premium.
