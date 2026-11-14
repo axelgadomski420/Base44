@@ -15,6 +15,7 @@ export const routes: Routes = [
   { path: 'wallet', canActivate: [authGuard], loadComponent: () => import('./features/wallet/wallet.page').then(m => m.WalletPage) },
   { path: 'verification', canActivate: [authGuard], loadComponent: () => import('./features/verification/verification.page').then(m => m.VerificationPage) },
   { path: 'profile', canActivate: [authGuard], loadComponent: () => import('./features/profile/profile.page').then(m => m.ProfilePage) },
+  { path: 'video-editor', canActivate: [authGuard], loadComponent: () => import('./features/video/video-editor.page').then(m => m.VideoEditorPage) },
   { path: 'admin', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-hub.page').then(m => m.AdminHubPage) },
   { path: 'admin/verifications', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-verifications.page').then(m => m.AdminVerificationsPage) },
   { path: 'admin/ads', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-ads.page').then(m => m.AdminAdsPage) },

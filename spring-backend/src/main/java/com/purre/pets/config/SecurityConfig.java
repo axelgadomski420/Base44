@@ -57,7 +57,8 @@ public class SecurityConfig {
                 .requestMatchers("/stripe/webhook").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .requestMatchers("/verification/**", "/arcade/**", "/coins/**", "/purchases/**",
-                                 "/listings/mine", "/listings/boost-profile", "/media/upload").authenticated()
+                                 "/listings/mine", "/listings/boost-profile", "/media/upload",
+                                 "/media/video-edit", "/premium/**").authenticated()
                 .anyRequest().authenticated())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
