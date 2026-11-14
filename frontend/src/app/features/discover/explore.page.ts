@@ -10,8 +10,12 @@ interface ListingDto {
   media: { id: number; mediaType: string; url: string; cover: boolean }[];
 }
 interface SuggestDto { breeds: string[]; cities: string[]; }
+interface SavedSearchDto {
+  id: number; name: string; species?: string; breed?: string; city?: string; listingType?: string;
+  gender?: string; maxAgeMonths?: number; minPrice?: number; maxPrice?: number; radiusKm: number; sort?: string;
+}
 
-/** 0.4.0/0.5.0: profesjonalna wyszukiwarka — debounce, podpowiedzi, filtry ceny/płci/wieku, sortowanie. */
+/** 0.4.0/0.5.0: wyszukiwarka — debounce, podpowiedzi, filtry, sortowanie + zapisane wyszukiwania (M9). */
 @Component({
   selector: 'purre-explore',
   standalone: true,
@@ -19,10 +23,26 @@ interface SuggestDto { breeds: string[]; cities: string[]; }
   template: `
   <header class="px-5 pt-6 pb-3 flex items-center justify-between">
     <h1 class="text-2xl font-extrabold">{{ i18n.t('nav.explore') }}</h1>
-    <a routerLink="/feed" class="purre-badge">🎬 HoloFeed</a>
+    <div class="flex gap-2">
+      <button class="purre-badge" (click)="saveSearch()">💾 Zapisz</button>
+      <a routerLink="/feed" class="purre-badge">🎬 HoloFeed</a>
+    </div>
   </header>
 
-  <section class="px-5 flex gap-2">
+  @if (saved(); as s) { <p class="px-5 text-xs" style="color: var(--accent-2)">{{ s }}</p> }
+
+  @if (mySearches().length) {
+    <section class="px-5 mt-2 flex flex-wrap gap-1">
+      @for (s of mySearches(); track s.id) {
+        <span class="purre-badge" style="outline: 1px solid var(--accent)">
+          <button (click)="applySaved(s)">⭐ {{ s.name }}</button>
+          <button class="ml-1" (click)="deleteSaved(s.id)">×</button>
+        </span>
+      }
+    </section>
+  }
+
+  <section class="px-5 flex gap-2 mt-2">
     <input class="purre-input flex-1" placeholder="Rasa…" [(ngModel)]="breed" (ngModelChange)="onQuery()">
     <select class="purre-input w-24" [(ngModel)]="species" (ngModelChange)="search()">
       <option value="">—</option>
@@ -111,12 +131,47 @@ export class ExplorePage implements OnInit {
   ];
   readonly items = signal<ListingDto[]>([]);
   readonly suggestions = signal<SuggestDto | null>(null);
+  readonly mySearches = signal<SavedSearchDto[]>([]);
+  readonly saved = signal('');
   private searchDebounce: ReturnType<typeof setTimeout> | null = null;
   private suggestDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private api: ApiService, readonly i18n: I18nService) {}
 
-  ngOnInit(): void { this.search(); }
+  ngOnInit(): void {
+    this.search();
+    this.loadSaved();
+  }
+
+  loadSaved(): void {
+    this.api.get<SavedSearchDto[]>('/saved-searches')
+      .subscribe({ next: (s) => this.mySearches.set(s), error: () => undefined });
+  }
+
+  saveSearch(): void {
+    const name = (this.breed || this.city || 'Wyszukiwanie') + (this.species ? ' · ' + (this.species === 'DOG' ? 'psy' : 'koty') : '');
+    this.api.post<SavedSearchDto>('/saved-searches', {
+      name, species: this.species || null, breed: this.breed || null, city: this.city || null,
+      listingType: this.type || null, gender: this.gender || null, maxAgeMonths: this.maxAgeMonths,
+      minPrice: this.minPrice, maxPrice: this.maxPrice, radiusKm: this.radius, sort: this.sort
+    }).subscribe({
+      next: () => { this.saved.set('💾 Zapisano wyszukiwanie „' + name + '”.'); this.loadSaved(); },
+      error: () => this.saved.set('Nie udało się zapisać wyszukiwania.')
+    });
+  }
+
+  applySaved(s: SavedSearchDto): void {
+    this.species = s.species ?? ''; this.breed = s.breed ?? ''; this.city = s.city ?? '';
+    this.type = s.listingType ?? ''; this.gender = s.gender ?? '';
+    this.maxAgeMonths = s.maxAgeMonths ?? null;
+    this.minPrice = s.minPrice ?? null; this.maxPrice = s.maxPrice ?? null;
+    this.radius = s.radiusKm ?? 50; this.sort = s.sort ?? 'NEWEST';
+    this.search();
+  }
+
+  deleteSaved(id: number): void {
+    this.api.delete('/saved-searches/' + id).subscribe({ next: () => this.loadSaved(), error: () => undefined });
+  }
 
   /** Debounce 300 ms — szukamy dopiero po chwili bez wpisywania. */
   onQuery(): void {
