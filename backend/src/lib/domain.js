@@ -10,6 +10,11 @@ export const GAME_CAPS = {
   reaction: 2000,
   whack: 4000,
   slide: 2500,
+  tetris: 50000,
+  flappy: 8000,
+  match3: 15000,
+  wordle: 600,
+  bubble: 12000,
 };
 export const GAME_DIVISOR = {
   "2048": 10,
@@ -20,6 +25,11 @@ export const GAME_DIVISOR = {
   reaction: 6,
   whack: 8,
   slide: 6,
+  tetris: 12,
+  flappy: 10,
+  match3: 15,
+  wordle: 4,
+  bubble: 12,
 };
 export const DAILY_TARGETS = {
   "2048": 800,
@@ -30,12 +40,17 @@ export const DAILY_TARGETS = {
   reaction: 900,
   whack: 200,
   slide: 500,
+  tetris: 1200,
+  flappy: 15,
+  match3: 800,
+  wordle: 1,
+  bubble: 600,
 };
 export const DAILY_BONUS = 120;
 
 export function dailyGame(dateStr) {
   const seed = dateStr.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const ids = ["2048", "memory", "quiz", "snake", "reaction", "whack", "slide"];
+  const ids = ["2048", "memory", "quiz", "snake", "reaction", "whack", "slide", "tetris", "flappy", "match3", "wordle", "bubble"];
   return ids[seed % ids.length];
 }
 
