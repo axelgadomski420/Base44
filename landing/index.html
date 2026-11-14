@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PURRE PETS — dla rasowych kotów i psów</title>
+<meta name="description" content="PURRE PETS — ultrapremium social marketplace dla hodowców rasowych kotów i psów. Where exceptional breeds find exceptional homes.">
+<meta property="og:title" content="PURRE PETS">
+<meta property="og:description" content="Where exceptional breeds find exceptional homes.">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/svg+xml" href="/purre-logo.svg">
+<style>
+  :root { --bg:#050507; --card:#0d0b09; --peach:#E8A87C; --green:#2BE39B; --text:#F5EFE6; --muted:#9a938a; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; line-height:1.6; }
+  .wrap { max-width:1024px; margin:0 auto; padding:0 24px; }
+  header { padding:28px 0; display:flex; justify-content:space-between; align-items:center; }
+  .logo-sm { font-family:Georgia,serif; font-weight:bold; color:var(--peach); font-size:22px; letter-spacing:2px; }
+  .btn { display:inline-block; padding:12px 26px; border-radius:999px; background:linear-gradient(135deg,var(--peach),#d18f5e); color:#0b0b0e; font-weight:700; text-decoration:none; }
+  .btn.ghost { background:transparent; border:1.5px solid var(--green); color:var(--green); }
+  .hero { text-align:center; padding:40px 0 24px; }
+  .hero img { width:min(680px,100%); height:auto; border-radius:28px; box-shadow:0 30px 80px rgba(232,168,124,.12); }
+  .hero p.lead { color:var(--muted); max-width:640px; margin:26px auto 30px; font-size:18px; }
+  .eyebrow { color:var(--green); letter-spacing:8px; font-size:12px; margin-bottom:14px; }
+  h2 { font-family:Georgia,serif; color:var(--peach); font-size:30px; margin:56px 0 20px; text-align:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid rgba(232,168,124,.14); border-radius:18px; padding:22px; }
+  .card b { color:var(--text); } .card span { color:var(--muted); font-size:14px; }
+  .plans { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }
+  .plan { text-align:center; }
+  .plan .price { font-size:26px; font-weight:800; color:var(--green); margin:8px 0; }
+  .plan ul { list-style:none; color:var(--muted); font-size:14px; margin:12px 0 18px; }
+  .plan li { padding:3px 0; }
+  footer { margin-top:72px; padding:32px 0 48px; text-align:center; color:var(--muted); font-size:13px; border-top:1px solid rgba(232,168,124,.12); }
+  footer a { color:var(--green); text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo-sm">🐾 PURRE PETS</div>
+    <a class="btn" href="https://bengos.pl">Otwórz aplikację</a>
+  </header>
+
+  <section class="hero">
+    <img src="/purre-logo.svg" alt="PURRE PETS — dla rasowych kotów i psów">
+    <p class="lead">Ultrapremium social marketplace dla hodowców rasowych kotów i psów.
+    Zweryfikowane hodowle, ogłoszenia z galerią i wideo, Reels, messenger, Arcade i PURRE Coins — wszystko w jednym, eleganckim miejscu.</p>
+    <a class="btn" href="https://bengos.pl">Wejdź do PURRE PETS</a>
+    &nbsp; <a class="btn ghost" href="#pakiety">Zobacz pakiety</a>
+  </section>
+
+  <h2>Co znajdziesz w środku</h2>
+  <div class="grid">
+    <div class="card"><b>🐾 Zweryfikowani hodowcy</b><br><span>Weryfikacja dokumentów z OCR i AI — badge zaufania i Trust Score.</span></div>
+    <div class="card"><b>🛒 Marketplace</b><br><span>Ogłoszenia z 6–20 zdjęciami, wideo, mapa, Haversine, sponsorowane wyróżnienia.</span></div>
+    <div class="card"><b>🎬 HoloFeed i Reels</b><br><span>Pionowe wideo jak TikTok — z dźwiękami PURRE Sounds i filtrami.</span></div>
+    <div class="card"><b>💬 Messenger</b><br><span>Czaty 1:1 i grupowe, załączniki, statusy odczytu — na żywo.</span></div>
+    <div class="card"><b>🎮 PURRE Arcade</b><br><span>16 gier, XP, rankingi i dzienny bonus za PURRE Coins.</span></div>
+    <div class="card"><b>👥 Społeczność i wydarzenia</b><br><span>Grupy rasowe, ankiety, kalendarz wystaw i zapisy.</span></div>
+  </div>
+
+  <h2 id="pakiety">Pakiety</h2>
+  <div class="plans">
+    <div class="card plan"><b>FREE</b><div class="price">0 zł</div>
+      <ul><li>Przeglądanie i wyszukiwarka</li><li>Posty społeczności</li><li>Messenger</li></ul>
+      <a class="btn ghost" href="https://bengos.pl">Zacznij darmo</a></div>
+    <div class="card plan"><b>⭐ PRO</b><div class="price">300 🪙/30 dni</div>
+      <ul><li>Publikacja Reels 🎬</li><li>Badge PRO</li><li>Statystyki hodowcy</li></ul>
+      <a class="btn" href="https://bengos.pl/paywall">Kup PRO</a></div>
+    <div class="card plan"><b>💎 ULTIMATE</b><div class="price">800 🪙/30 dni</div>
+      <ul><li>Wszystko z PRO</li><li>Boost profilu co tydzień</li><li>Badge ULTIMATE</li></ul>
+      <a class="btn" href="https://bengos.pl/paywall">Kup ULTIMATE</a></div>
+    <div class="card plan"><b>👑 PREMIUM</b><div class="price">500 🪙/30 dni</div>
+      <ul><li>Zero reklam</li><li>Reels + wszystkie funkcje</li><li>Badge Premium</li></ul>
+      <a class="btn" href="https://bengos.pl/paywall">Kup Premium</a></div>
+  </div>
+
+  <footer>
+    <p>PURRE PETS · <a href="https://bengos.pl">bengos.pl</a> · purrepets.pl</p>
+    <p>Brak hazardu i wypłat PURRE Coins na prawdziwe pieniądze. Zgodność z RODO/GDPR.</p>
+  </footer>
+</div>
+</body>
+</html>
