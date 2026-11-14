@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512" role="img" aria-label="PURRE PETS">
+  <defs>
+    <radialGradient id="ppGlow" cx="50%" cy="42%" r="65%">
+      <stop offset="0%" stop-color="#1a1410"/>
+      <stop offset="60%" stop-color="#0d0b09"/>
+      <stop offset="100%" stop-color="#050507"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="512" rx="28" fill="url(#ppGlow)"/>
+  <!-- narożne kropki -->
+  <circle cx="26" cy="26" r="5" fill="#2BE39B"/>
+  <circle cx="998" cy="26" r="5" fill="#E8A87C"/>
+  <circle cx="26" cy="486" r="5" fill="#E8A87C"/>
+  <circle cx="998" cy="486" r="5" fill="#2BE39B"/>
+  <!-- nadtytuł -->
+  <text x="512" y="64" text-anchor="middle" fill="#2BE39B" font-family="Verdana, Geneva, sans-serif" font-size="17" letter-spacing="9">DLA RASOWYCH KOTÓW I PSÓW</text>
+  <!-- łapa w kółku -->
+  <g transform="translate(512 112)">
+    <circle r="26" fill="none" stroke="#E8A87C" stroke-width="2.5"/>
+    <ellipse cx="0" cy="6" rx="9" ry="7.5" fill="#E8A87C"/>
+    <ellipse cx="-8" cy="-5" rx="3.4" ry="4.6" fill="#E8A87C"/>
+    <ellipse cx="0" cy="-8" rx="3.4" ry="4.6" fill="#E8A87C"/>
+    <ellipse cx="8" cy="-5" rx="3.4" ry="4.6" fill="#E8A87C"/>
+  </g>
+  <!-- PURRE / PETS -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-weight="bold" fill="#E8A87C">
+    <text x="512" y="252" text-anchor="middle" font-size="150" letter-spacing="4">PURRE</text>
+    <text x="512" y="392" text-anchor="middle" font-size="150" letter-spacing="10">PETS</text>
+  </g>
+  <!-- białe łapki nad literami -->
+  <g fill="#F5EFE6">
+    <ellipse cx="330" cy="185" rx="7" ry="9"/>
+    <ellipse cx="330" cy="200" rx="10" ry="7"/>
+    <ellipse cx="352" cy="325" rx="7" ry="9"/>
+    <ellipse cx="352" cy="340" rx="10" ry="7"/>
+  </g>
+  <!-- podkreślenie + tagline -->
+  <rect x="432" y="418" width="160" height="3" rx="1.5" fill="#2BE39B"/>
+  <text x="512" y="462" text-anchor="middle" fill="#F5EFE6" font-family="Verdana, Geneva, sans-serif" font-size="21">Where exceptional breeds find exceptional homes.</text>
+</svg>
