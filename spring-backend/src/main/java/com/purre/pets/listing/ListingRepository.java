@@ -30,6 +30,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
               AND (:species IS NULL OR l.species = :species)
               AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
               AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
+              AND (:listingType IS NULL OR l.listing_type = :listingType)
             HAVING distance_km <= :radiusKm
             ORDER BY distance_km ASC
             """,
@@ -47,6 +48,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                   AND (:species IS NULL OR l.species = :species)
                   AND (:breed IS NULL OR l.breed LIKE CONCAT('%', :breed, '%'))
                   AND (:city IS NULL OR l.city LIKE CONCAT('%', :city, '%'))
+                  AND (:listingType IS NULL OR l.listing_type = :listingType)
                 HAVING distance_km <= :radiusKm
             ) t
             """,
@@ -57,5 +59,19 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
                                            @Param("species") String species,
                                            @Param("breed") String breed,
                                            @Param("city") String city,
+                                           @Param("listingType") String listingType,
                                            Pageable pageable);
+
+    /** HoloFeed (faza 3): ogłoszenia z wideo, wyróżnione najpierw. */
+    @Query(value = """
+            SELECT DISTINCT l.* FROM listings l
+            JOIN listing_media m ON m.listing_id = l.id AND m.media_type = 'VIDEO'
+            WHERE l.status = 'ACTIVE'
+            ORDER BY (l.featured_until IS NOT NULL AND l.featured_until > NOW()) DESC, l.created_at DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Listing> findFeed(@Param("limit") int limit);
+
+    /** Smart Match: kandydaci do scoringu. */
+    List<Listing> findByStatus(ListingStatus status, Pageable pageable);
 }

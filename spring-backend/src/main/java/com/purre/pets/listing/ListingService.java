@@ -49,6 +49,18 @@ public class ListingService {
             throw ApiException.badRequest("VIDEO_COUNT", "Maksymalnie " + MAX_VIDEOS + " wideo na ogłoszenie.");
         }
 
+        ListingType type = ListingType.SALE;
+        if (req.listingType() != null && !req.listingType().isBlank()) {
+            try {
+                type = ListingType.valueOf(req.listingType().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw ApiException.badRequest("BAD_TYPE", "Typ ogłoszenia: SALE lub ADOPTION.");
+            }
+        }
+        if (type == ListingType.ADOPTION && req.price() != null && req.price().signum() > 0) {
+            throw ApiException.badRequest("ADOPTION_PRICE", "Adopcja jest bezpłatna — nie podawaj ceny.");
+        }
+
         Instant now = Instant.now();
         Listing listing = Listing.builder()
                 .breederId(breederId)
@@ -56,6 +68,7 @@ public class ListingService {
                 .description(req.description().trim())
                 .species(Species.valueOf(req.species().toUpperCase()))
                 .breed(req.breed())
+                .listingType(type)
                 .price(req.price())
                 .currency("PLN")
                 .city(req.city())
@@ -94,7 +107,7 @@ public class ListingService {
         // Koszt wystawienia: 50 PURRE Coins. Rzut ApiException INSUFFICIENT_COINS wycofuje całą transakcję.
         int newBalance = coinService.spend(breederId, props.getCoins().getListingPublishCost(),
                 CoinReason.LISTING_PUBLISH, "listing:" + listing.getId());
-        log.info("Ogłoszenie id={} wystawione przez hodowcę {}, saldo po: {}", listing.getId(), breederId, newBalance);
+        log.info("Ogłoszenie id={} (typ {}) wystawione przez hodowcę {}, saldo po: {}", listing.getId(), type, breederId, newBalance);
 
         return ListingDto.from(listing, mediaRepository.findByListingIdOrderByPositionAsc(listing.getId()), null);
     }
@@ -143,11 +156,14 @@ public class ListingService {
     }
 
     @Transactional(readOnly = true)
-    public List<ListingDto> nearby(double lat, double lng, double radiusKm, String species, String breed, String city, int page, int size) {
+    public List<ListingDto> nearby(double lat, double lng, double radiusKm, String species, String breed, String city,
+                                   String listingType, int page, int size) {
         Pageable pageable = PageRequest.of(page, Math.min(size, 50));
         return listingRepository.searchNearby(lat, lng, radiusKm,
                         species == null || species.isBlank() ? null : species.toUpperCase(),
-                        breed, city, pageable)
+                        breed, city,
+                        listingType == null || listingType.isBlank() ? null : listingType.toUpperCase(),
+                        pageable)
                 .stream()
                 .map(row -> {
                     Listing l = listingRepository.findById(row.getId()).orElse(null);
@@ -160,6 +176,14 @@ public class ListingService {
                 .sorted(Comparator
                         .comparing((ListingDto d) -> d.featuredUntil() != null && d.featuredUntil().isAfter(Instant.now()) ? 0 : 1)
                         .thenComparing(d -> d.distanceKm() == null ? Double.MAX_VALUE : d.distanceKm().doubleValue()))
+                .toList();
+    }
+
+    /** HoloFeed (faza 3): pionowy feed wideo z ogłoszeń. */
+    @Transactional(readOnly = true)
+    public List<ListingDto> feed(int limit) {
+        return listingRepository.findFeed(Math.min(limit, 50)).stream()
+                .map(l -> ListingDto.from(l, mediaOf(l.getId()), null))
                 .toList();
     }
 

@@ -30,6 +30,10 @@ public class Listing {
     @Column(length = 120)
     private String breed;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "listing_type", nullable = false, length = 10)
+    private ListingType listingType;
+
     @Column(precision = 10, scale = 2)
     private BigDecimal price;
 

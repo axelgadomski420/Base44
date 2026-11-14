@@ -10,6 +10,7 @@ public record CreateListingRequest(
         @NotBlank @Size(min = 20, max = 5000) String description,
         @NotBlank String species,
         @Size(max = 120) String breed,
+        String listingType,
         @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal price,
         @Size(min = 5, max = 120) String city,
         @Size(max = 120) String region,

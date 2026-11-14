@@ -1,8 +1,8 @@
 """PURRE PETS — AI Service (FastAPI).
 
 Zadania: OCR dokumentów weryfikacji, analiza ryzyka (Qwen2.5 3B przez Ollama),
-moderacja tekstu ogłoszeń. Limit RAM: model 3B na CPU (~2-3 GB). Cache Redis (opcjonalny).
-AI nigdy nie decyduje sam — wynik trafia do administratora (human-in-the-loop).
+moderacja tekstu ogłoszeń, PURRE Assistant. Limit RAM: model 3B na CPU (~2-3 GB).
+Cache Redis (opcjonalny). AI nigdy nie decyduje sam — wynik trafia do człowieka (human-in-the-loop).
 """
 import hashlib
 import json
@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from . import llm, moderation, ocr, risk
 
-app = FastAPI(title="PURRE PETS AI Service", version="1.0.0")
+app = FastAPI(title="PURRE PETS AI Service", version="1.1.0")
 
 MAX_FILE_SIZE = 10 * 1024 * 1024
 MAX_FILES = 20
@@ -93,3 +93,24 @@ class ModerateRequest(BaseModel):
 @app.post("/moderate")
 def moderate_text(req: ModerateRequest) -> dict:
     return moderation.moderate(req.text)
+
+
+class AssistantRequest(BaseModel):
+    question: str
+
+
+@app.post("/assistant")
+async def assistant(req: AssistantRequest) -> dict:
+    question = req.question.strip()[:1000]
+    if not question:
+        raise HTTPException(400, "Puste pytanie.")
+    cache_key = "assistant:" + hashlib.sha256(question.lower().encode()).hexdigest()[:32]
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+    result = await llm.answer(question)
+    if result is None or not result.get("answer"):
+        return {"answer": None}
+    _cache_set(cache_key, result, ttl=86400)
+    return result
+

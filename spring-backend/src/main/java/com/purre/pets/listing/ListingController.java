@@ -27,9 +27,16 @@ public class ListingController {
                                    @RequestParam(required = false) String species,
                                    @RequestParam(required = false) String breed,
                                    @RequestParam(required = false) String city,
+                                   @RequestParam(required = false) String listingType,
                                    @RequestParam(defaultValue = "0") int page,
                                    @RequestParam(defaultValue = "24") int size) {
-        return listingService.nearby(lat, lng, radiusKm, species, breed, city, page, size);
+        return listingService.nearby(lat, lng, radiusKm, species, breed, city, listingType, page, size);
+    }
+
+    /** HoloFeed — pionowy feed wideo (faza 3). */
+    @GetMapping("/feed")
+    public List<ListingDto> feed(@RequestParam(defaultValue = "20") int limit) {
+        return listingService.feed(limit);
     }
 
     @GetMapping("/{id}")
