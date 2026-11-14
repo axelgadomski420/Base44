@@ -2,9 +2,9 @@ import { Component, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { ApiService } from '../../core/api.service';
+import { ApiService, ApiError } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
-import { ChatService, ChatMessage, TypingEvent } from '../../core/chat.service';
+import { ChatService, ChatMessage, TypingEvent, Attachment } from '../../core/chat.service';
 
 interface ConversationDto {
   id: number; type: string; title: string; unread: number;
@@ -58,20 +58,50 @@ interface ConversationDto {
               @if (m.senderId !== myId() && isGroup()) {
                 <p class="text-xs opacity-70 mb-0.5">{{ senderName(m) }}</p>
               }
-              <p class="whitespace-pre-line break-words">{{ m.content }}</p>
+              @if (m.attachmentUrl) {
+                @if (m.attachmentType === 'IMAGE') {
+                  <img [src]="m.attachmentUrl" (click)="lightbox.set(m.attachmentUrl!)" loading="lazy"
+                       class="rounded-lg max-h-64 object-cover cursor-zoom-in mb-1" alt="{{ m.attachmentName || 'Zdjęcie' }}">
+                } @else if (m.attachmentType === 'VIDEO') {
+                  <video [src]="m.attachmentUrl" controls class="rounded-lg max-h-64 mb-1"></video>
+                } @else {
+                  <a [href]="m.attachmentUrl" target="_blank" rel="noopener" class="underline block mb-1">📎 {{ m.attachmentName || 'Załącznik' }}</a>
+                }
+              }
+              @if (m.content) { <p class="whitespace-pre-line break-words">{{ m.content }}</p> }
               <p class="text-[10px] opacity-60 text-right">{{ m.createdAt | date:'HH:mm' }}</p>
             </div>
           </div>
         }
         @if (typingName()) { <p class="text-xs purre-muted italic">✍️ {{ typingName() }} pisze…</p> }
       </section>
-      <footer class="px-4 py-3 border-t border-white/10 flex gap-2">
-        <input class="purre-input flex-1" placeholder="Napisz wiadomość…" [(ngModel)]="text"
-               (ngModelChange)="onType()" (keyup.enter)="send()">
-        <button class="purre-btn" (click)="send()">➤</button>
+      <footer class="px-4 py-3 border-t border-white/10 space-y-2">
+        @if (uploading()) { <p class="text-xs purre-muted">Wysyłanie załącznika…</p> }
+        @if (pendingAttachment()) {
+          <div class="flex items-center gap-2 text-xs purre-badge">
+            📎 {{ pendingAttachment()!.name || pendingAttachment()!.url }}
+            <button (click)="pendingAttachment.set(null)">×</button>
+          </div>
+        }
+        <div class="flex gap-2">
+          <label class="purre-card px-3 py-2 cursor-pointer" title="Dodaj zdjęcie lub plik">
+            @if (uploading()) { ⏳ } @else { 📎 }
+            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,application/pdf"
+                   class="hidden" (change)="onFilePick($event)">
+          </label>
+          <input class="purre-input flex-1" placeholder="Napisz wiadomość…" [(ngModel)]="text"
+                 (ngModelChange)="onType()" (keyup.enter)="send()">
+          <button class="purre-btn" (click)="send()">➤</button>
+        </div>
       </footer>
     }
   </div>
+
+  @if (lightbox()) {
+    <div class="fixed inset-0 z-50 bg-black/95 flex items-center justify-center" (click)="lightbox.set(null)">
+      <img [src]="lightbox()!" class="max-h-full max-w-full object-contain">
+    </div>
+  }
   `
 })
 export class MessengerPage implements OnInit {
@@ -79,6 +109,9 @@ export class MessengerPage implements OnInit {
   readonly messages = signal<ChatMessage[]>([]);
   readonly activeId = signal<number | null>(null);
   readonly typingName = signal('');
+  readonly lightbox = signal<string | null>(null);
+  readonly pendingAttachment = signal<Attachment | null>(null);
+  readonly uploading = signal(false);
   text = '';
   groupOpen = false;
   groupTitle = '';
@@ -121,7 +154,8 @@ export class MessengerPage implements OnInit {
   open(id: number): void {
     this.activeId.set(id);
     this.messages.set([]);
-    const conv = this.conversations().find(c => c.id === id);
+    this.lightbox.set(null);
+    this.pendingAttachment.set(null);
     this.api.get<ChatMessage[]>('/conversations/' + id + '/messages').subscribe({
       next: (list) => { this.messages.set(list.slice(-100)); this.markRead(id); }
     });
@@ -135,7 +169,6 @@ export class MessengerPage implements OnInit {
       if (this.typingTimer) clearTimeout(this.typingTimer);
       this.typingTimer = setTimeout(() => this.typingName.set(''), 2500);
     });
-    if (conv) this.senderNames.clear();
   }
 
   markRead(id: number): void {
@@ -152,11 +185,37 @@ export class MessengerPage implements OnInit {
     if (id) this.chat.typing(id);
   }
 
+  /** 0.4.0: wybór załącznika — upload do tego samego storage co ogłoszenia, potem podgląd przed wysłaniem. */
+  onFilePick(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { this.pendingAttachment.set(null); return; }
+    this.uploading.set(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    this.api.postMultipart<{ url: string; mediaType: 'IMAGE' | 'VIDEO' }>('/media/upload', fd).subscribe({
+      next: (res) => {
+        const type: 'IMAGE' | 'VIDEO' | 'FILE' = res.mediaType === 'VIDEO' ? 'VIDEO'
+          : res.mediaType === 'IMAGE' ? 'IMAGE' : 'FILE';
+        this.pendingAttachment.set({ url: res.url, type, name: file.name });
+        this.uploading.set(false);
+      },
+      error: (e) => {
+        this.uploading.set(false);
+        if (e instanceof ApiError && e.status === 413) { /* za duży plik — cicho */ }
+      }
+    });
+  }
+
   send(): void {
     const id = this.activeId();
-    if (!id || !this.text.trim()) return;
-    this.chat.send(id, this.text.trim());
+    const att = this.pendingAttachment();
+    if (!id || (!this.text.trim() && !att)) return;
+    this.chat.send(id, this.text.trim(), att ?? undefined);
     this.text = '';
+    this.pendingAttachment.set(null);
   }
 
   isGroup(): boolean {

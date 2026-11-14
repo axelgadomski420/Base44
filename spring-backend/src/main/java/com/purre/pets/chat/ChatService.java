@@ -14,8 +14,9 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * BENGOS Messenger (faza 2): rozmowy 1:1 i grupowe, historia, unseen,
- * seen (lastReadAt) i typing (WS). Push przez STOMP: /topic/conversation.{id}.
+ * BENGOS Messenger (faza 2 + 0.4.0): rozmowy 1:1 i grupowe, historia, unseen,
+ * seen (lastReadAt) i typing (WS), załączniki multimedialne (zdjęcia/wideo/pliki).
+ * Push przez STOMP: /topic/conversation.{id}.
  */
 @Slf4j
 @Service
@@ -78,11 +79,35 @@ public class ChatService {
 
     @Transactional
     public MessageDto send(Long userId, Long conversationId, String content) {
+        return send(userId, conversationId, content, null, null, null);
+    }
+
+    /** 0.4.0: wiadomość z opcjonalnym załącznikiem (URL musi pochodzić z naszego storage /api/media/...). */
+    @Transactional
+    public MessageDto send(Long userId, Long conversationId, String content,
+                           String attachmentUrl, String attachmentType, String attachmentName) {
         requireMember(userId, conversationId);
-        if (content == null || content.isBlank()) throw ApiException.badRequest("EMPTY_MESSAGE", "Wiadomość jest pusta.");
+        String text = content == null ? "" : content.trim();
+        boolean hasAttachment = attachmentUrl != null && !attachmentUrl.isBlank();
+        if (text.isEmpty() && !hasAttachment) {
+            throw ApiException.badRequest("EMPTY_MESSAGE", "Wiadomość jest pusta.");
+        }
+        if (hasAttachment) {
+            if (!attachmentUrl.startsWith("/api/media/")) {
+                throw ApiException.badRequest("BAD_ATTACHMENT", "Załącznik musi pochodzić z naszego storage.");
+            }
+            if (attachmentType == null || attachmentType.isBlank()) attachmentType = "FILE";
+            attachmentType = attachmentType.toUpperCase();
+            if (!List.of("IMAGE", "VIDEO", "FILE").contains(attachmentType)) attachmentType = "FILE";
+            attachmentUrl = attachmentUrl.substring(0, Math.min(500, attachmentUrl.length()));
+            if (attachmentName != null) attachmentName = attachmentName.substring(0, Math.min(200, attachmentName.length()));
+        }
         Message m = messageRepository.save(Message.builder()
                 .conversationId(conversationId).senderId(userId)
-                .content(content.trim().substring(0, Math.min(4000, content.trim().length())))
+                .content(text.substring(0, Math.min(4000, text.length())))
+                .attachmentUrl(hasAttachment ? attachmentUrl : null)
+                .attachmentType(hasAttachment ? attachmentType : null)
+                .attachmentName(hasAttachment ? attachmentName : null)
                 .createdAt(Instant.now()).build());
         MessageDto dto = toDto(m);
         messagingTemplate.convertAndSend("/topic/conversation." + conversationId, dto);
@@ -120,7 +145,8 @@ public class ChatService {
         }
         var last = messageRepository.findFirstByConversationIdOrderByCreatedAtDesc(c.getId()).orElse(null);
         if (last != null) {
-            lastMessage = last.getContent();
+            lastMessage = (last.getContent() == null || last.getContent().isBlank()) && last.getAttachmentUrl() != null
+                    ? "📎 Załącznik" : last.getContent();
             lastAt = last.getCreatedAt();
         }
         return new ConversationDto(c.getId(), c.getType().name(), title, unread, lastMessage, lastAt,
@@ -131,9 +157,13 @@ public class ChatService {
                                   String lastMessage, Instant lastMessageAt, int memberCount) {}
 
     public record MessageDto(Long id, Long conversationId, Long senderId, String senderName,
-                             String content, Instant createdAt) {
-        public static MessageDto toDto(Message m) { return new MessageDto(m.getId(), m.getConversationId(),
-                m.getSenderId(), null, m.getContent(), m.getCreatedAt()); }
+                             String content, String attachmentUrl, String attachmentType,
+                             String attachmentName, Instant createdAt) {
+        public static MessageDto toDto(Message m) {
+            return new MessageDto(m.getId(), m.getConversationId(), m.getSenderId(), null,
+                    m.getContent(), m.getAttachmentUrl(), m.getAttachmentType(), m.getAttachmentName(),
+                    m.getCreatedAt());
+        }
     }
 
     public record TypingDto(Long userId, String displayName, Long conversationId) {}

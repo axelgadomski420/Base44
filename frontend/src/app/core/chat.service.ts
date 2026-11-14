@@ -2,8 +2,10 @@ import { Injectable, signal } from '@angular/core';
 import { Client, IMessage } from '@stomp/stompjs';
 import { Observable, Subject } from 'rxjs';
 
+export interface Attachment { url: string; type: 'IMAGE' | 'VIDEO' | 'FILE'; name?: string; }
 export interface ChatMessage {
-  id: number; conversationId: number; senderId: number; senderName?: string; content: string; createdAt: string;
+  id: number; conversationId: number; senderId: number; senderName?: string; content: string;
+  attachmentUrl?: string; attachmentType?: 'IMAGE' | 'VIDEO' | 'FILE'; attachmentName?: string; createdAt: string;
 }
 export interface TypingEvent { userId: number; displayName: string; conversationId: number; }
 
@@ -55,9 +57,15 @@ export class ChatService {
     return subject.asObservable();
   }
 
-  send(conversationId: number, content: string): void {
+  send(conversationId: number, content: string, attachment?: Attachment): void {
     this.ensureConnected();
-    this.client?.publish({ destination: '/app/chat.send', body: JSON.stringify({ conversationId, content }) });
+    const body: Record<string, unknown> = { conversationId, content };
+    if (attachment) {
+      body['attachmentUrl'] = attachment.url;
+      body['attachmentType'] = attachment.type;
+      if (attachment.name) body['attachmentName'] = attachment.name;
+    }
+    this.client?.publish({ destination: '/app/chat.send', body: JSON.stringify(body) });
   }
 
   typing(conversationId: number): void {

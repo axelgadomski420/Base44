@@ -1,6 +1,5 @@
 package com.purre.pets.chat;
 
-import com.purre.pets.chat.ChatService.MessageDto;
 import com.purre.pets.chat.ChatService.TypingDto;
 import com.purre.pets.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -14,8 +13,9 @@ import java.security.Principal;
 import java.util.Map;
 
 /**
- * STOMP: /app/chat.send {conversationId, content} → /topic/conversation.{id}
- *        /app/chat.typing {conversationId}          → /topic/typing.{id}
+ * STOMP: /app/chat.send {conversationId, content, attachmentUrl?, attachmentType?, attachmentName?}
+ *        → /topic/conversation.{id}
+ *        /app/chat.typing {conversationId} → /topic/typing.{id}
  */
 @Controller
 @RequiredArgsConstructor
@@ -31,7 +31,10 @@ public class ChatWsController {
         if (user == null) return;
         Long conversationId = ((Number) payload.get("conversationId")).longValue();
         String content = String.valueOf(payload.getOrDefault("content", ""));
-        chatService.send(user.id(), conversationId, content);
+        String attachmentUrl = str(payload.get("attachmentUrl"));
+        String attachmentType = str(payload.get("attachmentType"));
+        String attachmentName = str(payload.get("attachmentName"));
+        chatService.send(user.id(), conversationId, content, attachmentUrl, attachmentType, attachmentName);
     }
 
     @MessageMapping("/chat.typing")
@@ -42,6 +45,10 @@ public class ChatWsController {
         String name = userRepository.findById(user.id()).map(u -> u.getDisplayName()).orElse("Ktoś");
         messagingTemplate.convertAndSend("/topic/typing." + conversationId,
                 new TypingDto(user.id(), name, conversationId));
+    }
+
+    private String str(Object o) {
+        return o == null ? null : String.valueOf(o);
     }
 
     private UserPrincipal extract(Principal principal) {

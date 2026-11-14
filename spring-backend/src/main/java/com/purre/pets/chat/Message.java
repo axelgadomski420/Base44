@@ -22,6 +22,17 @@ public class Message {
     @Column(nullable = false, columnDefinition = "VARCHAR(4000)")
     private String content;
 
+    /** 0.4.0: załącznik multimedialny (URL z /api/media/... — ten sam storage co ogłoszenia). */
+    @Column(name = "attachment_url", length = 500)
+    private String attachmentUrl;
+
+    /** IMAGE | VIDEO | FILE */
+    @Column(name = "attachment_type", length = 20)
+    private String attachmentType;
+
+    @Column(name = "attachment_name", length = 200)
+    private String attachmentName;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 }
