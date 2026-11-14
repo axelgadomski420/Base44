@@ -21,6 +21,7 @@ model User {
   banned         Boolean   @default(false)
   is_premium     Boolean   @default(false) // subskrypcja 29,99 PLN/mies. — bez reklam
   premium_until  DateTime? // data wygaśnięcia PREMIUM
+  stripe_customer_id String? // klient Stripe (subskrypcje PRO)
   created_date   DateTime  @default(now())
   updated_date   DateTime  @updatedAt
 
@@ -496,4 +497,23 @@ model StoryReaction {
 
   @@index([story_id])
   @@map("story_reactions")
+}
+
+model Subscription {
+  id                     String    @id @default(cuid())
+  user_id                String
+  stripe_session_id      String    @unique
+  stripe_subscription_id String?
+  stripe_customer_id     String?
+  plan                   String    @default("month") // "month" | "year"
+  amount                 Int       @default(0) // grosze PLN
+  currency               String    @default("pln")
+  status                 String    @default("active") // "active" | "canceled" | "past_due"
+  current_period_end     DateTime?
+  created_date           DateTime  @default(now())
+  updated_date           DateTime  @updatedAt
+
+  @@index([user_id])
+  @@index([stripe_subscription_id])
+  @@map("subscriptions")
 }
