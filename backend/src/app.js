@@ -20,15 +20,7 @@ export function createApp() {
   app.set("trust proxy", 1);
 
   app.use(
-    cors({
-      origin(origin, callback) {
-        // Allow same-origin/no-origin requests (curl, server-side) and configured origins.
-        if (!origin || config.corsOrigins.includes(origin)) return callback(null, true);
-        return callback(new Error(`Origin not allowed by CORS: ${origin}`));
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    })
+    cors()
   );
 
   app.use(

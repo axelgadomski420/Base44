@@ -35,9 +35,9 @@ function canWrite(entity, req, row) {
   if (isAdmin(req)) return true;
   switch (entity.write) {
     case "ownerOrAdmin":
-      return row.created_by_id === req.user?.id;
+      return row.created_by_id === (req.user?.id || req.user?.userId || req.user?.sub);
     case "memberOrAdmin":
-      return Array.isArray(row.members) && row.members.includes(req.user?.id);
+      return Array.isArray(row.members) && row.members.includes((req.user?.id || req.user?.userId || req.user?.sub));
     case "adminOnly":
     case "serviceOnly":
       return false;
@@ -47,10 +47,10 @@ function canWrite(entity, req, row) {
 }
 
 async function ensureWalletFor(user) {
-  const existing = await prisma.wallet.findUnique({ where: { user_id: user.id } });
+  const existing = await prisma.wallet.findUnique({ where: { user_id: (req.user?.id || req.user?.userId || user?.id) } });
   if (existing) return existing;
   return prisma.wallet.create({
-    data: { user_id: user.id, coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
+    data: { user_id: (req.user?.id || req.user?.userId || user?.id), coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
   });
 }
 
@@ -61,8 +61,8 @@ async function maybeEnsureWallet(entity, req, where) {
   const branches = [where, ...(Array.isArray(where.AND) ? where.AND : [])];
   const mentionsMe = branches.some(
     (branch) =>
-      branch?.user_id === req.user.id ||
-      (Array.isArray(branch?.user_id?.in) && branch.user_id.in.includes(req.user.id))
+      branch?.user_id === ((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub) ||
+      (Array.isArray(branch?.user_id?.in) && branch.user_id.in.includes(((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub)))
   );
   if (mentionsMe) await ensureWalletFor(req.user);
 }
@@ -155,9 +155,9 @@ entitiesRouter.post(
     Object.assign(data, entity.forcedCreate ? entity.forcedCreate(req.user) : {});
     if (req.params.entity === "Message") {
       const members = Array.isArray(data.members) ? data.members : [];
-      if (!members.includes(req.user.id)) throw forbidden("Sender must be a conversation member");
+      if (!members.includes(((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub))) throw forbidden("Sender must be a conversation member");
     }
-    const row = await prisma[entity.delegate].create({ data: { ...data, created_by_id: req.user.id } });
+    const row = await prisma[entity.delegate].create({ data: { ...data, created_by_id: ((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub) } });
     if (entity.afterCreate) await entity.afterCreate(row, req.user);
     res.status(201).json(row);
   })
