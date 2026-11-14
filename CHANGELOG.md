@@ -1,5 +1,21 @@
 # Changelog — PURRE PETS
 
+## [0.3.1] — Reklamy: komplet slotów, kliknięcia, panel hodowcy
+
+### Dodano
+- **Sloty reklamowe we wszystkich placementach:** DISCOVER (był), HOLOFEED (co 4. wideo w feedzie),
+  GAME_INTERSTITIAL (co 3. wejście do Arcade), BREEDER_PANEL (szczegóły ogłoszenia), FOOTER (nad dolnym menu).
+- **Komponent `purre-ad-slot`:** pobiera /ads/serve, capping co N wejść (sessionStorage), klik → POST /ads/{id}/click.
+  Premium → backend zwraca null → slot się nie renderuje.
+- **Śledzenie kliknięć:** POST /ads/{id}/click (publiczny, anonimowy — RODO), kolumna clicks w ad_campaigns
+  (migracja V10), licznik kliknięć w panelu admina.
+- **Panel hodowcy /my-ads:** zakup reklamy sponsorowanej (1 dzień — 50 🪙, 7 dni — 200 🪙 z PURRE Coins,
+  obsługa braku środków z linkiem do portfela) + lista własnych kampanii; link z formularza dodawania ogłoszenia.
+
+### Naprawy
+- **CoinServiceTest przeniesiony** z src/main/java (test JUnit w źródłach produkcyjnych psuł kompilację)
+  do spring-backend/src/test/java/com/purre/pets/coins/ — jedyna poprawna kopia.
+
 ## [0.3.0] — Edytor wideo, 2FA + sesje, komplet 15 gier Arcade
 
 ### Dodano
