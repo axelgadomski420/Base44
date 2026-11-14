@@ -9,5 +9,6 @@ public enum CoinReason {
     LISTING_FEATURE,   // wyróżnienie ogłoszenia (100 / 7 dni)
     PROFILE_BOOST,     // boost profilu (200 / 24 h)
     SPONSORED_AD,      // sponsorowane ogłoszenie reklamowe
+    PREMIUM_SUBSCRIPTION, // PURRE Premium (500 / 30 dni)
     ADMIN_GRANT
 }

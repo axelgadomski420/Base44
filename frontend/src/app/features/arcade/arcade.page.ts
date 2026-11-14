@@ -1,6 +1,9 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { ApiService, ApiError } from '../../core/api.service';
 import { Game2048Component } from './game-2048';
+import { GameMemoryComponent } from './game-memory';
+import { GameQuizComponent } from './game-quiz';
+import { GameSnakeComponent } from './game-snake';
 
 interface LeaderRow { rank: number; userId: number; displayName: string; totalScore: number; weeklyBonus: boolean; }
 interface DailyResult { coins: number; streak: number; balance: number; }
@@ -8,7 +11,7 @@ interface DailyResult { coins: number; streak: number; balance: number; }
 @Component({
   selector: 'purre-arcade',
   standalone: true,
-  imports: [Game2048Component],
+  imports: [Game2048Component, GameMemoryComponent, GameQuizComponent, GameSnakeComponent],
   template: `
   <div class="px-5 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
     <header class="flex items-center justify-between">
@@ -22,7 +25,20 @@ interface DailyResult { coins: number; streak: number; balance: number; }
       @if (dailyMsg()) { <p class="text-xs mt-1" style="color: var(--accent-2)">{{ dailyMsg() }}</p> }
     </button>
 
-    <purre-game-2048></purre-game-2048>
+    <section class="flex gap-2 flex-wrap">
+      @for (g of games; track g.id) {
+        <button class="purre-badge"
+                [style.outline]="current() === g.id ? '2px solid var(--accent)' : 'none'"
+                (click)="current.set(g.id)">{{ g.label }}</button>
+      }
+    </section>
+
+    @switch (current()) {
+      @case ('2048') { <purre-game-2048></purre-game-2048> }
+      @case ('memory') { <purre-game-memory></purre-game-memory> }
+      @case ('quiz') { <purre-game-quiz></purre-game-quiz> }
+      @case ('snake') { <purre-game-snake></purre-game-snake> }
+    }
 
     <section>
       <h2 class="font-bold mb-2">Gry (wkrótce)</h2>
@@ -46,7 +62,14 @@ interface DailyResult { coins: number; streak: number; balance: number; }
   `
 })
 export class ArcadePage implements OnInit {
-  readonly soon = ['🧩 Memory', '❓ Quiz', '⬡ Hex', '🐍 Snake', '🧱 Tetris', '🐦 Flappy', '🏃 Runner', '💎 Match-3', '🔤 Wordle', '🎨 Coloring', '🦘 Jump', '🫧 Bubble', '🖼️ Puzzle'];
+  readonly games = [
+    { id: '2048', label: '🐱 2048' },
+    { id: 'memory', label: '🧩 Memory' },
+    { id: 'quiz', label: '❓ Quiz' },
+    { id: 'snake', label: '🐍 Snake' }
+  ] as const;
+  readonly current = signal<string>('2048');
+  readonly soon = ['⬡ Hex', '🧱 Tetris', '🐦 Flappy', '🏃 Runner', '💎 Match-3', '🔤 Wordle', '🎨 Coloring', '🦘 Jump', '🫧 Bubble', '🖼️ Puzzle', '🐸 Hopscotch', '🧠 Sudoku'];
   readonly leaderboard = signal<LeaderRow[]>([]);
   readonly xp = signal(0);
   readonly claiming = signal(false);

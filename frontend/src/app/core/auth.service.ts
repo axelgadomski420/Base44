@@ -5,14 +5,17 @@ import { Router } from '@angular/router';
 export interface PurreUser {
   id: number;
   email: string;
-  role: 'BUYER' | 'BREEDER' | 'ADMIN';
+  role: 'BUYER' | 'BREEDER' | 'MODERATOR' | 'ADMIN';
   displayName: string;
   bio?: string;
   city?: string;
   region?: string;
+  website?: string;
+  instagram?: string;
   avatarUrl?: string;
   verifiedBadge: boolean;
   boostedUntil?: string;
+  premiumUntil?: string;
 }
 
 interface AuthResponse { accessToken: string; user: PurreUser; }
@@ -53,6 +56,11 @@ export class AuthService {
         error: reject
       });
     });
+  }
+
+  /** Aktualizacja sygnału użytkownika po edycji profilu / avatara / zakupie Premium. */
+  patchUser(partial: Partial<PurreUser>): void {
+    this.user.update(u => u ? { ...u, ...partial } : u);
   }
 
   logout(): void {
