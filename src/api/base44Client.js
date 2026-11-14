@@ -131,7 +131,6 @@ function createEntity(name) {
     async delete(id) {
       return request(`${base}/${id}`, { method: "DELETE" });
     },
-    // Same event shape as Base44: { type: "create" | "update" | "delete", data }
     subscribe(callback) {
       const client = getSocket();
       const handler = (event) => callback(event);
@@ -187,7 +186,6 @@ export const auth = {
     }
     auth.setToken(null);
   },
-  // Social login is not available on the self-hosted backend; send users to /login.
   loginWithProvider: (provider, returnTo) => {
     window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo ?? window.location.href)}`);
   },
@@ -222,6 +220,7 @@ export const adminApi = {
   overview: () => request("/api/admin/overview"),
   reviewVerification: (id, body) => request(`/api/admin/verification/${id}`, { method: "POST", body }),
   reviewListing: (id, body) => request(`/api/admin/listings/${id}`, { method: "POST", body }),
+  reviewPost: (id, body) => request(`/api/admin/posts/${id}`, { method: "POST", body }),
 };
 
 export const billing = {
@@ -240,7 +239,6 @@ export const base44 = {
   entities,
   integrations: {
     Core: {
-      // Replaces base44.integrations.Core.UploadPublicFile({ file }) â†’ { file_url }
       async UploadPublicFile({ file }) {
         const formData = new FormData();
         formData.append("file", file);

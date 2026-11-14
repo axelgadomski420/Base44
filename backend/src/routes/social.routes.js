@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { optionalAuth, requireAuth, isAdmin } from "../lib/auth.js";
+import { optionalAuth, requireAuth, isAdmin, isModerator } from "../lib/auth.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../lib/errors.js";
 import { coordsFor } from "../lib/domain.js";
 import { loadWallet } from "../lib/wallet.js";
@@ -36,9 +36,9 @@ const verificationSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
-function requireAdmin(req, res, next) {
+function requireModerator(req, res, next) {
   if (!req.user) return next(forbidden());
-  if (!isAdmin(req)) return next(forbidden("Wymagane uprawnienia administratora"));
+  if (!isModerator(req)) return next(forbidden("Wymagane uprawnienia moderatora lub administratora"));
   return next();
 }
 
@@ -369,12 +369,12 @@ socialRouter.post(
   })
 );
 
-adminRouter.use(requireAuth, requireAdmin);
+adminRouter.use(requireAuth, requireModerator);
 
 adminRouter.get(
   "/overview",
   asyncHandler(async (req, res) => {
-    const [verifications, listings, users, events] = await Promise.all([
+    const [verifications, listings, posts, users, events] = await Promise.all([
       prisma.verificationRequest.findMany({
         where: { status: "pending" },
         orderBy: { created_date: "asc" },
@@ -385,10 +385,15 @@ adminRouter.get(
         orderBy: { created_date: "asc" },
         take: 40,
       }),
+      prisma.post.findMany({
+        where: { status: { in: ["review", "hidden"] } },
+        orderBy: { created_date: "desc" },
+        take: 40,
+      }),
       prisma.user.count(),
       prisma.event.count({ where: { status: "published" } }),
     ]);
-    res.json({ verifications, listings, users, events });
+    res.json({ verifications, listings, posts, users, events });
   })
 );
 
@@ -427,5 +432,20 @@ adminRouter.post(
       },
     });
     res.json(listing);
+  })
+);
+
+adminRouter.post(
+  "/posts/:id",
+  asyncHandler(async (req, res) => {
+    const status = req.body?.status;
+    if (status !== "published" && status !== "hidden" && status !== "review") {
+      throw badRequest("status: published | hidden | review");
+    }
+    const post = await prisma.post.update({
+      where: { id: req.params.id },
+      data: { status },
+    });
+    res.json(post);
   })
 );
