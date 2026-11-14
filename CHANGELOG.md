@@ -1,5 +1,20 @@
 # CHANGELOG — PURRE PETS
 
+## [0.5.0] — Reels Studio, Landing purrepets.pl, Premium/Pro/Ultra
+
+### Dodano
+- **Reels Studio (TikTok-style):** biblioteka `PURRE Sounds` — 6 proceduralnych loopiek Web Audio (Aurora Vibes, PURRE Beat, Royal Waltz, Sunset Lofi, Forest Paws, Midnight Neon), zero plików do uploadu; filtry CSS na zdjęcia/wideo (Aurora, Sepia, Mono, Chłodny, Ciepły, Żywy, Dream); wybór dźwięku z podglądem 2 s w kreatorze, 🔊/🔇 w feedzie (jedna loopka naraz); filtry zapisywane na poście (V20: posts.sound_id, posts.filter_id) i renderowane w feedzie; skrót do edytora wideo (trim/muzyka/tempo).
+- **Landing purrepets.pl:** katalog `landing/` — logo PURRE PETS odtworzone jako SVG (serif peach #E8A87C, zieleni aurora #2BE39B, łapa w kółku, narożne kropki), strona z funkcjami i pakietami, CTA do aplikacji (bengos.pl); nginx: nowy blok server_name purrepets.pl → /var/www/purre-landing; instrukcja w landing/README-DEPLOY.md.
+- **Premium/Pro/Ultra — pełna macierz funkcji w paywallu:** posty, Reels+dźwięki+filtry, badge pakietu, statystyki hodowcy, cotygodniowy boost (ULTIMATE+), priorytet w rotacji reklam (ULTIMATE+), zero reklam (PREMIUM).
+- **Statystyki hodowcy:** GET /breeders/me/stats (PRO/ULTIMATE/PREMIUM; FREE → 403 PAYWALL_REQUIRED): aktywne/sprzedane ogłoszenia, polubienia postów, obserwujący; karta 📊 w panelu hodowcy.
+- **Badge pakietu autora** (⭐ PRO / 💎 ULTIMATE / 👑 Premium) przy postach w feedzie.
+- **Perk ULTIMATE:** zakup aktywuje 7-dniowy boost profilu.
+- **Reklamy — CTR:** /ads/mine zwraca impressions + clicks; panel hodowcy pokazuje 👁️/🖱️/CTR %.
+
+### Audyt 0.5.0 (co się nie zapisało wcześniej)
+- Z przerwanej sesji **weszedł** backend+frontend społeczności: V14 (profil zwierzaka), V15 (zapisane wyszukiwania + powiadomienia), V16 (messenger upgrade), V17 (społeczność), V18 (wydarzenia), V19 (obserwowanie) + pakiety breeder/community/events/follow/savedsearch/scheduler/notification i strony /community, /events, /breeder/:id, /notifications.
+- **Nie weszło** (dokończone w 0.5.0): CHANGELOG 0.5.0, landing purrepets.pl z logo, dźwięki/filtry Reels, macierz Premium/Pro/Ultra, statystyki, CTR reklam. Szczegóły: AUDIT-GAPS.md.
+
 ## [0.4.0] — Posty/Reels, Paywall, LLM, wyszukiwarka
 
 ### Dodano
