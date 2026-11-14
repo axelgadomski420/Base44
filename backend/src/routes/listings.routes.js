@@ -20,8 +20,7 @@ const createListingSchema = z.object({
   image_urls: z.array(z.string().max(600)).max(6).optional(),
 });
 
-// POST /api/listings/with-cost â replaces the createListing server function:
-// only breeders, first listing free, then LISTING_COST coins, city â coordinates.
+// POST /api/listings/with-cost — only verified breeders (admin-approved documents).
 listingsRouter.post(
   "/with-cost",
   requireAuth,
@@ -30,15 +29,17 @@ listingsRouter.post(
     const user = req.user;
 
     const profile = await prisma.profile.findFirst({ where: { user_id: user.id } });
-    if (!profile || profile.account_type !== "breeder") {
-      throw forbidden("OgÅoszenia dodajÄ konta hodowcy â przeÅÄcz konto na hodowcÄ.");
+    if (!profile || !profile.verified) {
+      throw forbidden(
+        "Ogloszenia moga dodawac tylko zweryfikowani hodowcy. Wyslij dokumenty w /verify i poczekaj na zatwierdzenie administratora."
+      );
     }
 
     const owned = await prisma.listing.count({ where: { seller_id: user.id } });
     const cost = owned === 0 ? 0 : LISTING_COST;
     const wallet = await loadWallet(user.id);
     if (cost > 0 && (wallet.coins ?? 0) < cost) {
-      throw badRequest(`Potrzebujesz ${cost} PURRE coinÃ³w â zagraj w Arcade, aby je zdobyÄ.`);
+      throw badRequest(`Potrzebujesz ${cost} PURRE coinow — zagraj w Arcade, aby je zdobyc.`);
     }
 
     const coords = coordsFor(data.city) ?? {};
@@ -49,7 +50,7 @@ listingsRouter.post(
         lng: coords.lng,
         seller_id: user.id,
         seller_name: profile.kennel_name || profile.display_name || user.full_name || user.email,
-        seller_verified: !!profile.verified,
+        seller_verified: true,
         status: "active",
         created_by_id: user.id,
       },
@@ -65,12 +66,10 @@ listingsRouter.post(
   })
 );
 
-// --- Rule-based moderation (replacement for Base44's InvokeLLM integrations) ---
-
 const RISKY_PATTERNS = [
-  { re: /zaliczk|przelew|blik|kryptowalut|bitcoin|usdt/i, risk: 35, category: "payment-pressure", reason: "Presja na nietypowe pÅatnoÅci lub zaliczki." },
+  { re: /zaliczk|przelew|blik|kryptowalut|bitcoin|usdt/i, risk: 35, category: "payment-pressure", reason: "Presja na nietypowe platnosci lub zaliczki." },
   { re: /bez dokument|bez rodowodu|bez umow/i, risk: 40, category: "missing-docs", reason: "Brak dokumentacji hodowlanej lub umowy." },
-  { re: /piln|ostatnia szansa|dziÅ tylko|tanio/i, risk: 20, category: "urgency", reason: "WywoÅywanie presji czasu lub podejrzanie niska cena." },
+  { re: /piln|ostatnia szansa|dzis tylko|tanio/i, risk: 20, category: "urgency", reason: "Wywolywanie presji czasu lub podejrzanie niska cena." },
   { re: /transport zagranic/i, risk: 30, category: "transport", reason: "Podejrzana oferta z transportem zagranicznym." },
 ];
 
@@ -89,7 +88,7 @@ function moderateHeuristically(listing) {
   if (listing.price != null) {
     if (listing.price === 0 && listing.kind === "sale") {
       risk += 25;
-      reasons.push("SprzedaÅ¼ za 0 zÅ.");
+      reasons.push("Sprzedaz za 0 zl.");
       categories.push("pricing");
     } else if (listing.price > 0 && listing.price < 200) {
       risk += 20;
@@ -99,29 +98,27 @@ function moderateHeuristically(listing) {
   }
   if (!listing.description || listing.description.trim().length < 30) {
     risk += 15;
-    reasons.push("Bardzo krÃ³tki opis ogÅoszenia.");
+    reasons.push("Bardzo krotki opis ogloszenia.");
     categories.push("content");
   }
   risk = Math.max(0, Math.min(100, risk));
-  const reason = reasons.join(" ").slice(0, 200) || "OgÅoszenie wyglÄda poprawnie.";
+  const reason = reasons.join(" ").slice(0, 200) || "Ogloszenie wyglada poprawnie.";
   return { risk, category: categories[0] ?? "general", reason, decision: risk >= 60 ? "review" : "allow" };
 }
 
-// POST /api/listings/:id/moderate â replaces the moderateListing server function.
-// Ships a rule-based moderator; set MODERATION_LLM_URL / MODERATION_LLM_KEY to use an LLM.
 listingsRouter.post(
   "/:id/moderate",
   requireAuth,
   asyncHandler(async (req, res) => {
     const listing = await prisma.listing.findUnique({ where: { id: req.params.id } });
     if (!listing) throw notFound();
-    if (listing.seller_id !== req.user.id && !isAdmin(req)) throw forbidden("Brak dostÄpu");
+    if (listing.seller_id !== req.user.id && !isAdmin(req)) throw forbidden("Brak dostepu");
 
     let result = moderateHeuristically(listing);
 
     if (process.env.MODERATION_LLM_URL && process.env.MODERATION_LLM_KEY) {
       try {
-        const prompt = `JesteÅ moderatorem marketplace'u hodowlanego PURRE PETS. OceÅ ogÅoszenie pod kÄtem handlu zwierzÄtami bez dokumentacji, treÅci nielegalnych, spamu, oszustw, absurdalnych cen i presji emocjonalnej. TytuÅ: ${listing.title}. Opis: ${listing.description ?? "(brak)"}. Cena: ${listing.price ?? 0} PLN. Miasto: ${listing.city}. ZwrÃ³Ä JSON: risk 0-100, category, reason po polsku (max 200 znakÃ³w), decision: allow gdy risk < 60, review gdy >= 60.`;
+        const prompt = `Moderuj ogloszenie PURRE PETS. Tytul: ${listing.title}. Opis: ${listing.description ?? "(brak)"}. Cena: ${listing.price ?? 0}. JSON: risk 0-100, category, reason, decision allow|review.`;
         const response = await fetch(process.env.MODERATION_LLM_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.MODERATION_LLM_KEY}` },
@@ -140,7 +137,7 @@ listingsRouter.post(
           }
         }
       } catch {
-        // fall back to the heuristic result
+        /* heuristic fallback */
       }
     }
 
