@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import SideNav from "@/components/layout/SideNav";
 import BottomNav from "@/components/layout/BottomNav";
 import AssistantPanel from "@/components/common/AssistantPanel";
-import ConsentBanner from "@/components/common/ConsentBanner";
 import { useWallet } from "@/lib/useWallet";
 
 export default function AppShell({ children }) {
@@ -36,7 +35,6 @@ export default function AppShell({ children }) {
       </div>
       <AssistantPanel />
       <BottomNav />
-      <ConsentBanner />
     </div>
   );
 }
