@@ -4,6 +4,8 @@ import com.purre.pets.common.ApiException;
 import com.purre.pets.config.AppProperties;
 import com.purre.pets.coins.CoinReason;
 import com.purre.pets.coins.CoinService;
+import com.purre.pets.notification.NotificationService;
+import com.purre.pets.savedsearch.SavedSearchService;
 import com.purre.pets.verification.VerificationRepository;
 import com.purre.pets.verification.VerificationStatus;
 import com.purre.pets.listing.dto.*;
@@ -37,6 +39,8 @@ public class ListingService {
     private final UserRepository userRepository;
     private final CoinService coinService;
     private final AppProperties props;
+    private final SavedSearchService savedSearchService;
+    private final NotificationService notificationService;
 
     @Transactional
     public ListingDto create(Long breederId, CreateListingRequest req) {
@@ -120,7 +124,16 @@ public class ListingService {
                 CoinReason.LISTING_PUBLISH, "listing:" + listing.getId());
         log.info("Ogłoszenie id={} (typ {}) wystawione przez hodowcę {}, saldo po: {}", listing.getId(), type, breederId, newBalance);
 
-        return ListingDto.from(listing, mediaRepository.findByListingIdOrderByPositionAsc(listing.getId()), null);
+        ListingDto dto = ListingDto.from(listing, mediaRepository.findByListingIdOrderByPositionAsc(listing.getId()), null);
+        // 0.5.0 M9: powiadomienia o nowych ofertach dla zapisanych wyszukiwań
+        try {
+            notificationService.create(breederId, "LISTING_PUBLISHED", "✅ Ogłoszenie opublikowane",
+                    listing.getTitle() + " — koszt 50 🪙", "/listing/" + listing.getId());
+            savedSearchService.notifyMatching(listing);
+        } catch (Exception e) {
+            log.warn("Nie udało się wysłać powiadomień dla ogłoszenia {}: {}", listing.getId(), e.getMessage());
+        }
+        return dto;
     }
 
     @Transactional
