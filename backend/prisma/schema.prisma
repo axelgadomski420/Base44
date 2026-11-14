@@ -449,3 +449,47 @@ model Report {
   @@index([status])
   @@map("reports")
 }
+
+model E2eKey {
+  id           String   @id @default(cuid())
+  user_id      String
+  public_key   String // JWK klucza publicznego ECDH P-256
+  device_id    String   @default("default")
+  created_date DateTime @default(now())
+
+  @@index([user_id])
+  @@map("e2e_keys")
+}
+
+model Story {
+  id           String   @id @default(cuid())
+  author_id    String
+  author_name  String?
+  author_avatar String?
+  media_url    String
+  media_type   String   @default("image") // "image" | "video"
+  caption      String?
+  music_title  String?
+  music_url    String?
+  views        Int      @default(0)
+  viewers      String[] @default([])
+  expires_at   DateTime // relacja żyje 24 h
+  created_by_id String?
+  created_date DateTime @default(now())
+
+  @@index([author_id])
+  @@index([expires_at])
+  @@map("stories")
+}
+
+model StoryReaction {
+  id         String   @id @default(cuid())
+  story_id   String
+  user_id    String
+  emoji      String
+  created_by_id String?
+  created_date DateTime @default(now())
+
+  @@index([story_id])
+  @@map("story_reactions")
+}

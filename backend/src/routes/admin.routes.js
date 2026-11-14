@@ -5,8 +5,14 @@ import { asyncHandler, badRequest, forbidden, notFound } from "../lib/errors.js"
 import { ollamaGenerate, ollamaHealth } from "../lib/ollama.js";
 import { notify } from "./notifications.routes.js";
 import { isPremium } from "./premium.routes.js";
+import { config } from "../config.js";
 
 export const adminRouter = Router();
+
+// Panel administracyjny jest zarezerwowany dla kont z ADMIN_EMAILS (domyślnie effdoa@gmail.com).
+function isAdminAccount(req) {
+  return isAdmin(req) && config.adminEmails.includes(String(req.user?.email ?? "").toLowerCase());
+}
 
 function requireModerator(req, _res, next) {
   if (!req.user) return next(forbidden());
@@ -20,7 +26,7 @@ adminRouter.use(requireAuth, requireModerator);
 adminRouter.get(
   "/overview",
   asyncHandler(async (_req, res) => {
-    const [verifications, listings, posts, users, events, reels, transactions, reports, comments, bannedCount, premiumCount, health] = await Promise.all([
+    const [verifications, listings, posts, users, events, reels, transactions, reports, comments, bannedCount, premiumCount, stories, health] = await Promise.all([
       prisma.verificationRequest.findMany({ where: { status: "pending" }, orderBy: { created_date: "asc" }, take: 40 }),
       prisma.listing.findMany({ where: { status: "review" }, orderBy: { created_date: "asc" }, take: 40 }),
       prisma.post.findMany({ where: { status: { in: ["review", "hidden"] } }, orderBy: { created_date: "desc" }, take: 40 }),
@@ -31,13 +37,14 @@ adminRouter.get(
       prisma.report.findMany({ where: { status: "open" }, orderBy: { created_date: "asc" }, take: 40 }),
       prisma.comment.count(),
       prisma.user.count({ where: { banned: true } }),
-      prisma.user.count({ where: { premium_until: { gt: new Date() } } }),
+      prisma.user.count({ where: { OR: [{ is_premium: true }, { premium_until: { gt: new Date() } }] } }),
+      prisma.story.count({ where: { expires_at: { gt: new Date() } } }),
       ollamaHealth(),
     ]);
     res.json({
       verifications, listings, posts, reports,
       stats: {
-        users, events, reels, transactions, comments, banned: bannedCount, premium: premiumCount,
+        users, events, reels, transactions, comments, banned: bannedCount, premium: premiumCount, active_stories: stories,
         pending: verifications.length + listings.length + posts.length + reports.length,
       },
       ollama: health,
@@ -55,7 +62,7 @@ adminRouter.get(
       orderBy: { created_date: "desc" },
       take: 60,
       select: {
-        id: true, email: true, full_name: true, role: true, banned: true, premium_until: true, email_verified: true, created_date: true,
+        id: true, email: true, full_name: true, role: true, banned: true, is_premium: true, premium_until: true, email_verified: true, created_date: true,
       },
     });
     const wallets = await prisma.wallet.findMany({ where: { user_id: { in: users.map((u) => u.id) } } });
@@ -71,11 +78,11 @@ adminRouter.get(
   })
 );
 
-// PATCH /api/admin/users/:id — rola, ban, odznaka, saldo portfela.
+// PATCH /api/admin/users/:id — rola, ban, odznaka, saldo portfela (tylko effdoa@gmail.com).
 adminRouter.patch(
   "/users/:id",
   asyncHandler(async (req, res) => {
-    if (!isAdmin(req)) throw forbidden("Tylko administrator może zarządzać kontami");
+    if (!isAdminAccount(req)) throw forbidden("Zarządzanie kontami zarezerwowane dla administratora głównego");
     const target = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!target) throw notFound("Nie znaleziono konta");
     const data = {};
@@ -124,7 +131,7 @@ adminRouter.patch(
   })
 );
 
-// POST /api/admin/verification/:id/analyze — analiza wniosku przez lokalny LLM.
+// POST /api/admin/verification/:id/analyze — analiza wniosku przez lokalny LLM (Ollama).
 adminRouter.post(
   "/verification/:id/analyze",
   asyncHandler(async (req, res) => {
@@ -217,7 +224,7 @@ adminRouter.delete(
   })
 );
 
-// POST /api/admin/reports/:id — rozpatrzenie zgłoszenia (moderator).
+// POST /api/admin/reports/:id — rozpatrzenie zgłoszenia (moderator; ban tylko admin główny).
 adminRouter.post(
   "/reports/:id",
   asyncHandler(async (req, res) => {
@@ -243,7 +250,7 @@ adminRouter.post(
       }
     }
     if (action === "ban") {
-      if (!isAdmin(req)) throw forbidden("Tylko administrator może banować");
+      if (!isAdminAccount(req)) throw forbidden("Blokowanie kont zarezerwowane dla administratora głównego");
       const userId = report.target_type === "user" ? report.target_id
         : (await prisma.post.findUnique({ where: { id: report.target_id } }))?.author_id;
       if (userId) await prisma.user.update({ where: { id: userId }, data: { banned: true } });
@@ -254,6 +261,19 @@ adminRouter.post(
       data: { status, resolution: String(req.body?.resolution ?? action ?? "").slice(0, 300) },
     });
     res.json(updated);
+  })
+);
+
+// GET /api/admin/premium — lista subskrypcji Premium.
+adminRouter.get(
+  "/premium",
+  asyncHandler(async (_req, res) => {
+    const users = await prisma.user.findMany({
+      where: { OR: [{ is_premium: true }, { premium_until: { gt: new Date() } }] },
+      select: { id: true, email: true, full_name: true, is_premium: true, premium_until: true },
+      take: 100,
+    });
+    res.json({ items: users.map((u) => ({ ...u, premium: isPremium(u) })) });
   })
 );
 

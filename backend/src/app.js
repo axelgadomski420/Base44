@@ -20,6 +20,9 @@ import { searchRouter } from "./routes/search.routes.js";
 import { reelsAudioRouter } from "./routes/reels-audio.routes.js";
 import { messagesRouter } from "./routes/messages.routes.js";
 import { premiumRouter } from "./routes/premium.routes.js";
+import { e2eRouter } from "./routes/e2e.routes.js";
+import { storiesRouter } from "./routes/stories.routes.js";
+import { profileRouter } from "./routes/profile.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT ?? 3000);
@@ -103,6 +106,9 @@ export function createApp() {
   app.use("/api/reels-audio", reelsAudioRouter);
   app.use("/api/messages", messagesRouter);
   app.use("/api/premium", premiumRouter);
+  app.use("/api/e2e", e2eRouter);
+  app.use("/api/stories", storiesRouter);
+  app.use("/api/profile", profileRouter);
 
   app.use(proxyFrontend);
   app.use(notFoundHandler);
