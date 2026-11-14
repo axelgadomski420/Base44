@@ -4,20 +4,19 @@ import { prisma } from "../prisma.js";
 import { requireAuth } from "../lib/auth.js";
 import { asyncHandler, badRequest, notFound, forbidden } from "../lib/errors.js";
 import { notify } from "./notifications.routes.js";
+import { emitToRoom, emitToUser } from "../socket/index.js";
 
 export const messagesRouter = Router();
 
 messagesRouter.use(requireAuth);
 
-// Wskaźnik „pisze…” — trzymany w pamięci procesu (4 sekundy świeżości).
 const typingMap = new Map(); // conversation_id -> Map(user_id -> { name, ts })
 
 const sendSchema = z.object({
   conversation_id: z.string().trim().min(1).optional(),
   recipient_id: z.string().trim().min(1).optional(),
   content: z.string().max(4000).optional(),
-  // E2E (jak w Messengerze Meta): treść zaszyfrowana AES-GCM kluczem ECDH P-256.
-  ciphertext: z.string().max(8000).optional(),
+  ciphertext: z.string().max(16000).optional(), // E2E: AES-GCM (ECDH P-256), serwer nie widzi treści
   iv: z.string().max(200).optional(),
   e2e: z.boolean().optional(),
   media_url: z.string().trim().max(500).optional(),
@@ -56,7 +55,7 @@ function previewOf(data) {
   return (data.content || "").slice(0, 120);
 }
 
-// GET /api/messages/conversations?q= — lista rozmów + wyszukiwarka.
+// GET /api/messages/conversations?q=
 messagesRouter.get(
   "/conversations",
   asyncHandler(async (req, res) => {
@@ -77,29 +76,39 @@ messagesRouter.get(
   })
 );
 
-// GET /api/messages/conversations/:id/messages — historia + statusy odczytu.
+// GET /api/messages/conversations/:id/messages?before=<ISO>&limit=50
+// Infinite scroll: podaj "before" (created_date najstarszej wczytanej wiadomości).
 messagesRouter.get(
   "/conversations/:id/messages",
   asyncHandler(async (req, res) => {
     const conv = await prisma.conversation.findUnique({ where: { id: req.params.id } });
     if (!conv) throw notFound("Nie znaleziono rozmowy");
     if (!conv.members.includes(req.user.id)) throw forbidden("Brak dostępu");
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit ?? 50)));
+    const before = typeof req.query.before === "string" && req.query.before ? new Date(req.query.before) : null;
     const messages = await prisma.message.findMany({
-      where: { conversation_id: conv.id, deleted: false },
-      orderBy: { created_date: "asc" },
-      take: 300,
+      where: {
+        conversation_id: conv.id,
+        deleted: false,
+        ...(before && !Number.isNaN(before.getTime()) ? { created_date: { lt: before } } : {}),
+      },
+      orderBy: { created_date: "desc" },
+      take: limit,
     });
-    await prisma.message.updateMany({
-      where: { conversation_id: conv.id, seen: false, NOT: { sender_id: req.user.id } },
-      data: { seen: true, read_at: new Date() },
-    });
+    const ordered = messages.reverse();
+    if (!before) {
+      await prisma.message.updateMany({
+        where: { conversation_id: conv.id, seen: false, NOT: { sender_id: req.user.id } },
+        data: { seen: true, read_at: new Date() },
+      });
+    }
     const reactions = await prisma.messageReaction.findMany({
-      where: { message_id: { in: messages.map((m) => m.id) } },
+      where: { message_id: { in: ordered.map((m) => m.id) } },
     });
     res.json({
       conversation: conv,
-      e2e_participants: conv.members,
-      items: messages.map((m) => ({
+      has_more: messages.length === limit,
+      items: ordered.map((m) => ({
         ...m,
         delivered: !!m.delivered_at,
         read: !!m.read_at,
@@ -109,7 +118,7 @@ messagesRouter.get(
   })
 );
 
-// POST /api/messages/send — wiadomość tekstowa (E2E lub zwykła) / z mediami.
+// POST /api/messages/send — realtime: emit do pokoju rozmowy + user roomów adresatów.
 messagesRouter.post(
   "/send",
   asyncHandler(async (req, res) => {
@@ -136,8 +145,12 @@ messagesRouter.post(
       where: { id: conv.id },
       data: { last_message: previewOf(data), last_sender_id: req.user.id, last_message_at: new Date() },
     });
+
+    const payload = { ...message, delivered: true, read: false, reactions: [] };
+    emitToRoom(`conversation:${conv.id}`, "message:new", payload);
     for (const memberId of conv.members) {
       if (memberId !== req.user.id) {
+        emitToUser(memberId, "message:new", payload);
         await notify(memberId, {
           type: "message",
           title: data.e2e ? "Nowa zaszyfrowana wiadomość 🔒" : "Nowa wiadomość",
@@ -152,23 +165,19 @@ messagesRouter.post(
   })
 );
 
-// POST /api/messages/typing/:conversationId — „pisze…”.
+// POST /api/messages/typing/:conversationId — REST fallback wskaźnika „pisze…”.
 messagesRouter.post(
   "/typing/:conversationId",
   asyncHandler(async (req, res) => {
     const conv = await prisma.conversation.findUnique({ where: { id: req.params.conversationId } });
     if (!conv || !conv.members.includes(req.user.id)) throw notFound();
     const perConv = typingMap.get(conv.id) ?? new Map();
-    perConv.set(req.user.id, {
-      name: req.user.full_name || req.user.email,
-      ts: Date.now(),
-    });
+    perConv.set(req.user.id, { name: req.user.full_name || req.user.email, ts: Date.now() });
     typingMap.set(conv.id, perConv);
     res.json({ ok: true });
   })
 );
 
-// GET /api/messages/typing/:conversationId — kto pisze (świeżość 4 s).
 messagesRouter.get(
   "/typing/:conversationId",
   asyncHandler(async (req, res) => {
@@ -187,7 +196,6 @@ messagesRouter.get(
   })
 );
 
-// POST /api/messages/:id/read — potwierdzenie odczytu („odczytano”).
 messagesRouter.post(
   "/:id/read",
   asyncHandler(async (req, res) => {
@@ -197,11 +205,16 @@ messagesRouter.post(
       where: { id: message.id },
       data: { seen: true, read_at: new Date() },
     });
+    emitToRoom(`conversation:${message.conversation_id}`, "message:read", {
+      conversation_id: message.conversation_id,
+      message_id: message.id,
+      user_id: req.user.id,
+      ts: Date.now(),
+    });
     res.json(updated);
   })
 );
 
-// POST /api/messages/:id/react — reakcja emoji.
 messagesRouter.post(
   "/:id/react",
   asyncHandler(async (req, res) => {
@@ -223,17 +236,18 @@ messagesRouter.post(
         data: { message_id: message.id, user_id: req.user.id, emoji },
       });
     }
+    emitToRoom(`conversation:${message.conversation_id}`, "message:react", { message_id: message.id, reaction });
     res.json({ reaction });
   })
 );
 
-// DELETE /api/messages/:id — usuwanie wiadomości (dla obu stron, jak w Messengerze).
 messagesRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
     const message = await prisma.message.findUnique({ where: { id: req.params.id } });
     if (!message || message.sender_id !== req.user.id) throw notFound("Nie znaleziono wiadomości");
     await prisma.message.update({ where: { id: message.id }, data: { deleted: true } });
+    emitToRoom(`conversation:${message.conversation_id}`, "message:delete", { message_id: message.id });
     res.json({ ok: true });
   })
 );

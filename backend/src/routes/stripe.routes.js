@@ -6,9 +6,14 @@ import { config } from "../config.js";
 import { requireAuth } from "../lib/auth.js";
 import { asyncHandler, badRequest } from "../lib/errors.js";
 import { loadWallet, saveWallet } from "../lib/wallet.js";
+import { notify } from "./notifications.routes.js";
 
 export const stripeRouter = Router();
 
+export const PRO_MONTH_PLN = 29.99;
+export const PRO_YEAR_PLN = 249.99;
+
+// Pakiety monet zostają wyłącznie dla gry/arcade — Premium jest TYLKO w PLN.
 export const COIN_PACKAGES = [
   { id: "coins_100", coins: 100, amount: 999, currency: "pln", label: "100 monet" },
   { id: "coins_500", coins: 500, amount: 3999, currency: "pln", label: "500 monet" },
@@ -16,9 +21,7 @@ export const COIN_PACKAGES = [
   { id: "coins_3000", coins: 3000, amount: 17999, currency: "pln", label: "3000 monet" },
 ];
 
-const checkoutSchema = z.object({
-  package_id: z.string(),
-});
+const checkoutSchema = z.object({ package_id: z.string() });
 
 function packageById(id) {
   return COIN_PACKAGES.find((item) => item.id === id) ?? null;
@@ -28,10 +31,56 @@ stripeRouter.get("/packages", (_req, res) => {
   res.json({
     configured: Boolean(config.stripeSecret),
     currency: "pln",
+    pro: { month: PRO_MONTH_PLN, year: PRO_YEAR_PLN, currency: "pln" },
     packages: COIN_PACKAGES,
   });
 });
 
+// POST /api/stripe/create-pro-checkout — subskrypcja Purre Pets PRO (wyłącznie PLN).
+stripeRouter.post(
+  "/create-pro-checkout",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const plan = req.body?.plan === "year" ? "year" : "month";
+    if (!config.stripeSecret) {
+      res.status(503).json({ error: { message: "Stripe nie jest skonfigurowany", code: "STRIPE_DISABLED" } });
+      return;
+    }
+    const origin = config.publicBaseUrl.replace(/\/$/, "");
+    const amount = plan === "year" ? PRO_YEAR_PLN : PRO_MONTH_PLN;
+    const body = new URLSearchParams();
+    body.set("mode", "subscription");
+    body.set("success_url", `${origin}/rewards?pro=success&session_id={CHECKOUT_SESSION_ID}`);
+    body.set("cancel_url", `${origin}/rewards?pro=cancelled`);
+    body.set("client_reference_id", req.user.id);
+    body.set("customer_email", req.user.email);
+    body.set("metadata[user_id]", req.user.id);
+    body.set("metadata[kind]", "premium_subscription");
+    body.set("metadata[plan]", plan);
+    body.set("subscription_data[metadata][user_id]", req.user.id);
+    body.set("subscription_data[metadata][plan]", plan);
+    body.set("line_items[0][quantity]", "1");
+    body.set("line_items[0][price_data][currency]", "pln");
+    body.set("line_items[0][price_data][unit_amount]", String(Math.round(amount * 100)));
+    body.set("line_items[0][price_data][recurring][interval]", plan === "year" ? "year" : "month");
+    body.set("line_items[0][price_data][product_data][name]", plan === "year" ? "Purre Pets PRO — rok" : "Purre Pets PRO — miesiąc");
+    body.set("line_items[0][price_data][product_data][description]", "Bez reklam, badge PRO, pełny dostęp");
+
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.stripeSecret}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+    const payload = await response.json();
+    if (!response.ok) throw badRequest(payload?.error?.message || "Nie udało się otworzyć płatności Stripe");
+    res.json({ url: payload.url, id: payload.id, configured: true });
+  })
+);
+
+// POST /api/stripe/create-checkout — pakiety monet (arcade), bez zmian.
 stripeRouter.post(
   "/create-checkout",
   requireAuth,
@@ -130,6 +179,75 @@ async function creditSession(session) {
   return { sessionId, coins };
 }
 
+// Aktywacja PRO natychmiast po płatności (webhook Stripe): is_premium=true + badge PRO.
+async function activatePro(session) {
+  const userId = session?.metadata?.user_id || session?.client_reference_id;
+  const plan = session?.metadata?.plan === "year" ? "year" : "month";
+  if (!userId) return null;
+  const existing = await prisma.subscription.findUnique({ where: { stripe_session_id: session.id } });
+  if (existing) return existing;
+
+  const periodEnd = new Date(Date.now() + (plan === "year" ? 365 : 30) * 24 * 60 * 60 * 1000);
+  const subscription = await prisma.subscription.create({
+    data: {
+      user_id: userId,
+      stripe_session_id: session.id,
+      stripe_subscription_id: session.subscription ?? null,
+      stripe_customer_id: session.customer ?? null,
+      plan,
+      amount: Number(session.amount_total ?? 0),
+      currency: session.currency ?? "pln",
+      status: "active",
+      current_period_end: periodEnd,
+    },
+  });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { is_premium: true, premium_until: periodEnd },
+  });
+  // Badge PRO / zweryfikowany na profilu.
+  await prisma.profile.updateMany({ where: { user_id: userId }, data: { verified: true } });
+  await notify(userId, {
+    type: "system",
+    title: "Purre Pets PRO aktywne 🏆",
+    body: `Subskrypcja ${plan === "year" ? "roczna" : "miesięczna"} opłacona — reklamy wyłączone, badge PRO nadany.`,
+    link: "/rewards",
+  });
+  return subscription;
+}
+
+// Przedłużenie PRO przy odnowieniu (invoice.paid) i cofnięcie przy rezygnacji.
+async function handleInvoicePaid(invoice) {
+  const subId = invoice?.subscription;
+  if (!subId) return null;
+  const sub = await prisma.subscription.findFirst({ where: { stripe_subscription_id: subId } });
+  if (!sub) return null;
+  const periodEnd = new Date((invoice.lines?.data?.[0]?.period?.end ?? 0) * 1000 || Date.now() + 30 * 24 * 3600 * 1000);
+  await prisma.subscription.update({
+    where: { id: sub.id },
+    data: { status: "active", current_period_end: periodEnd },
+  });
+  await prisma.user.update({ where: { id: sub.user_id }, data: { is_premium: true, premium_until: periodEnd } });
+  return sub;
+}
+
+async function handleSubscriptionDeleted(subscription) {
+  const subId = subscription?.id;
+  if (!subId) return null;
+  const sub = await prisma.subscription.findFirst({ where: { stripe_subscription_id: subId } });
+  if (!sub) return null;
+  await prisma.subscription.update({ where: { id: sub.id }, data: { status: "canceled" } });
+  await prisma.user.update({ where: { id: sub.user_id }, data: { is_premium: false } });
+  await prisma.profile.updateMany({ where: { user_id: sub.user_id }, data: { verified: false } });
+  await notify(sub.user_id, {
+    type: "system",
+    title: "Subskrypcja PRO wygasła",
+    body: "Twoja subskrypcja Purre Pets PRO została zakończona. Odnów ją w sekcji Premium.",
+    link: "/rewards",
+  });
+  return sub;
+}
+
 stripeRouter.post(
   "/webhook",
   asyncHandler(async (req, res) => {
@@ -138,8 +256,25 @@ stripeRouter.post(
       return;
     }
     const event = JSON.parse(req.rawBody.toString("utf8"));
-    if (event.type === "checkout.session.completed") {
-      await creditSession(event.data?.object);
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data?.object;
+          if (session?.metadata?.kind === "premium_subscription") await activatePro(session);
+          else await creditSession(session);
+          break;
+        }
+        case "invoice.paid":
+          await handleInvoicePaid(event.data?.object);
+          break;
+        case "customer.subscription.deleted":
+          await handleSubscriptionDeleted(event.data?.object);
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error("[stripe webhook]", err?.message);
     }
     res.json({ received: true });
   })
