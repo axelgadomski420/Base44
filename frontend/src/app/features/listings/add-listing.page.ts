@@ -32,6 +32,38 @@ interface UploadedMedia { url: string; mediaType: 'IMAGE' | 'VIDEO'; }
           <input class="purre-input mt-1" name="breed" [(ngModel)]="breed">
         </label>
       </div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block text-sm">Płeć
+          <select class="purre-input mt-1" name="gender" [(ngModel)]="gender">
+            <option value="">—</option>
+            <option value="MALE">♂ Samiec</option>
+            <option value="FEMALE">♀ Samica</option>
+          </select>
+        </label>
+        <label class="block text-sm">Data urodzenia
+          <input class="purre-input mt-1" type="date" name="birthDate" [(ngModel)]="birthDate">
+        </label>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block text-sm">Kolor
+          <input class="purre-input mt-1" name="color" [(ngModel)]="color">
+        </label>
+        <label class="block text-sm">Umaszczenie
+          <input class="purre-input mt-1" name="coat" [(ngModel)]="coat">
+        </label>
+      </div>
+      <label class="block text-sm">Charakter
+        <textarea class="purre-input mt-1" name="characterDesc" rows="2" [(ngModel)]="characterDesc"
+                  placeholder="Temperament, potrzeby, warunki życia…"></textarea>
+      </label>
+      <label class="block text-sm">Rodzice / rodowód
+        <input class="purre-input mt-1" name="parents" [(ngModel)]="parents" placeholder="np. CH. Azor z Doliny x Fela">
+      </label>
+      <div class="flex gap-4 text-sm">
+        <label><input type="checkbox" name="pedigree" [(ngModel)]="pedigree"> 📜 Rodowód</label>
+        <label><input type="checkbox" name="vaccinated" [(ngModel)]="vaccinated"> 💉 Szczepienia</label>
+        <label><input type="checkbox" name="chipped" [(ngModel)]="chipped"> 🔖 Chip</label>
+      </div>
       <div class="grid grid-cols-3 gap-2">
         <label class="block text-sm">Cena (PLN)
           <input class="purre-input mt-1" type="number" step="0.01" name="price" [(ngModel)]="price">
@@ -77,6 +109,9 @@ interface UploadedMedia { url: string; mediaType: 'IMAGE' | 'VIDEO'; }
 })
 export class AddListingPage {
   title = ''; description = ''; species = 'DOG'; breed = '';
+  gender = ''; birthDate = ''; color = ''; coat = '';
+  characterDesc = ''; parents = '';
+  pedigree = false; vaccinated = false; chipped = false;
   price: number | null = null; city = ''; region = '';
   readonly media = signal<UploadedMedia[]>([]);
   readonly uploading = signal(false);
@@ -136,6 +171,10 @@ export class AddListingPage {
       const created = await new Promise<{ id: number }>((resolve, reject) => {
         this.api.post<{ id: number }>('/listings', {
           title: this.title, description: this.description, species: this.species, breed: this.breed,
+          gender: this.gender || undefined, birthDate: this.birthDate || undefined,
+          color: this.color || undefined, coat: this.coat || undefined,
+          characterDesc: this.characterDesc || undefined, parents: this.parents || undefined,
+          pedigree: this.pedigree, vaccinated: this.vaccinated, chipped: this.chipped,
           price: this.price, city: this.city, region: this.region,
           latitude: coords.lat, longitude: coords.lng,
           media: this.media().map((m, i) => ({ url: m.url, mediaType: m.mediaType, isCover: i === 0 }))

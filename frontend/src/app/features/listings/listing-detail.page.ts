@@ -8,11 +8,16 @@ import { I18nService } from '../../core/i18n.service';
 
 interface ListingDto {
   id: number; breederId: number; title: string; description: string; species: string; breed?: string;
+  gender?: string; birthDate?: string; color?: string; coat?: string;
+  characterDesc?: string; parents?: string;
+  pedigree?: boolean; vaccinated?: boolean; chipped?: boolean;
   price?: number; currency?: string; city?: string; region?: string; status: string; featuredUntil?: string;
+  sponsoredUntil?: string;
   listingType?: string;
   media: { id: number; mediaType: string; url: string; tag?: string; cover: boolean }[];
 }
 
+/** 0.5.0: profil zwierzaka — pełny ekran mediów, dane, badania, akcje. */
 @Component({
   selector: 'purre-listing-detail',
   standalone: true,
@@ -44,7 +49,11 @@ interface ListingDto {
         <div class="flex items-center gap-2 flex-wrap">
           <h1 class="text-2xl font-bold">{{ l.title }}</h1>
           @if (l.listingType === 'ADOPTION') { <span class="purre-badge">❤️ Adopcja</span> }
-          @if (isFeatured(l)) { <span class="purre-badge">⭐ {{ i18n.t('ad.sponsored') }}</span> }
+          @if (isFeatured(l.featuredUntil)) { <span class="purre-badge">⭐ {{ i18n.t('ad.sponsored') }}</span> }
+          @if (isFeatured(l.sponsoredUntil)) { <span class="purre-badge">📣 Sponsorowane</span> }
+          @if (l.status === 'OPTION') { <span class="purre-badge">🔒 Opcja</span> }
+          @if (l.status === 'RESERVED') { <span class="purre-badge">🔒 Zarezerwowany</span> }
+          @if (l.status === 'PLANNED') { <span class="purre-badge">🐾 Planowany miot</span> }
         </div>
         @if (l.listingType !== 'ADOPTION') {
           <p class="text-xl font-bold" style="color: var(--accent-2)">
@@ -52,10 +61,30 @@ interface ListingDto {
           </p>
         }
         <p class="purre-muted text-sm">{{ l.breed }} · {{ l.city }} {{ l.region ? '· ' + l.region : '' }}</p>
+
+        <section class="purre-card p-4 mt-3 space-y-1 text-sm">
+          <p class="font-semibold mb-1">🐾 Profil zwierzaka</p>
+          @if (l.gender) { <p><span class="purre-muted">Płeć:</span> {{ l.gender === 'MALE' ? '♂ samiec' : '♀ samica' }}</p> }
+          @if (l.birthDate) { <p><span class="purre-muted">Wiek:</span> {{ ageLabel(l.birthDate) }} <span class="purre-muted">({{ l.birthDate }})</span></p> }
+          @if (l.color) { <p><span class="purre-muted">Kolor:</span> {{ l.color }}</p> }
+          @if (l.coat) { <p><span class="purre-muted">Umaszczenie:</span> {{ l.coat }}</p> }
+          <div class="flex gap-2 flex-wrap mt-2">
+            @if (l.pedigree) { <span class="purre-badge">📜 Rodowód</span> }
+            @if (l.vaccinated) { <span class="purre-badge">💉 Szczepienia</span> }
+            @if (l.chipped) { <span class="purre-badge">🔖 Chip</span> }
+          </div>
+          @if (l.characterDesc) { <p class="mt-2 leading-relaxed"><span class="purre-muted">Charakter:</span> {{ l.characterDesc }}</p> }
+          @if (l.parents) { <p class="leading-relaxed"><span class="purre-muted">Rodzice / rodowód:</span> {{ l.parents }}</p> }
+        </section>
+
         <p class="text-sm leading-relaxed whitespace-pre-line">{{ l.description }}</p>
         @if (l.status === 'SOLD') { <p class="purre-badge">✅ {{ i18n.t('listing.sold') }}</p> }
-        <div class="flex gap-2 mt-2">
+        <div class="flex gap-2 mt-2 flex-wrap">
           <a [routerLink]="['/messenger']" [queryParams]="{ to: l.breederId }" class="purre-btn flex-1 text-center">💬 Napisz do hodowcy</a>
+          @if (l.status === 'ACTIVE') {
+            <a [routerLink]="['/messenger']" [queryParams]="{ to: l.breederId, subject: 'reservation-' + l.id }" class="purre-btn flex-1 text-center" style="background: rgba(255,255,255,0.08)">🔒 Zarezerwuj</a>
+          }
+          <button class="purre-btn" style="background: rgba(255,255,255,0.08)" (click)="share(l)">🔗 Udostępnij</button>
         </div>
         <purre-ad-slot placement="BREEDER_PANEL" class="block mt-3" />
       </div>
@@ -122,5 +151,24 @@ export class ListingDetailPage implements OnInit {
   }
 
   toggleLightbox(): void { this.lightbox.update(v => !v); }
-  isFeatured(l: ListingDto): boolean { return !!l.featuredUntil && new Date(l.featuredUntil).getTime() > Date.now(); }
+  isFeatured(until?: string): boolean { return !!until && new Date(until).getTime() > Date.now(); }
+
+  ageLabel(birthDate: string): string {
+    const months = Math.max(0, Math.floor((Date.now() - new Date(birthDate).getTime()) / (30.44 * 24 * 3600 * 1000)));
+    if (months < 12) return months + ' mies.';
+    const years = Math.floor(months / 12);
+    const rest = months % 12;
+    return years + ' ' + (years === 1 ? 'rok' : (years < 5 ? 'lata' : 'lat')) + (rest ? ' ' + rest + ' mies.' : '');
+  }
+
+  share(l: ListingDto): void {
+    const url = window.location.origin + '/listing/' + l.id;
+    if (navigator.share) {
+      navigator.share({ title: l.title, url }).catch(() => undefined);
+    } else {
+      navigator.clipboard?.writeText(url);
+      this.reportMsg.set('');
+      alert('Link skopiowany: ' + url);
+    }
+  }
 }

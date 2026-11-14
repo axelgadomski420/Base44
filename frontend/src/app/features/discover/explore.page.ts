@@ -6,12 +6,12 @@ import { I18nService } from '../../core/i18n.service';
 
 interface ListingDto {
   id: number; title: string; breed?: string; city?: string; price?: number; currency?: string;
-  listingType?: string; distanceKm?: number;
+  listingType?: string; gender?: string; birthDate?: string; distanceKm?: number;
   media: { id: number; mediaType: string; url: string; cover: boolean }[];
 }
 interface SuggestDto { breeds: string[]; cities: string[]; }
 
-/** 0.4.0: profesjonalna wyszukiwarka — debounce, podpowiedzi, filtry ceny/miasta, sortowanie. */
+/** 0.4.0/0.5.0: profesjonalna wyszukiwarka — debounce, podpowiedzi, filtry ceny/płci/wieku, sortowanie. */
 @Component({
   selector: 'purre-explore',
   standalone: true,
@@ -55,6 +55,18 @@ interface SuggestDto { breeds: string[]; cities: string[]; }
   </section>
 
   <section class="px-5 mt-2 flex gap-2 flex-wrap">
+    <select class="purre-input w-24 text-sm" [(ngModel)]="gender" (ngModelChange)="search()">
+      <option value="">Płeć</option>
+      <option value="MALE">♂</option>
+      <option value="FEMALE">♀</option>
+    </select>
+    <select class="purre-input w-28 text-sm" [(ngModel)]="maxAgeMonths" (ngModelChange)="search()">
+      <option [ngValue]="null">Wiek</option>
+      <option [ngValue]="3">do 3 mies.</option>
+      <option [ngValue]="6">do 6 mies.</option>
+      <option [ngValue]="12">do 12 mies.</option>
+      <option [ngValue]="24">do 24 mies.</option>
+    </select>
     @for (t of types; track t.value) {
       <button class="purre-badge" [style.outline]="type === t.value ? '2px solid var(--accent)' : 'none'"
               (click)="type = t.value; search()">{{ t.label }}</button>
@@ -86,7 +98,8 @@ interface SuggestDto { breeds: string[]; cities: string[]; }
   `
 })
 export class ExplorePage implements OnInit {
-  breed = ''; species = ''; type = ''; city = '';
+  breed = ''; species = ''; type = ''; city = ''; gender = '';
+  maxAgeMonths: number | null = null;
   minPrice: number | null = null;
   maxPrice: number | null = null;
   sort = 'NEWEST';
@@ -130,6 +143,7 @@ export class ExplorePage implements OnInit {
       lat: 52.2297, lng: 21.0122, radiusKm: this.radius,
       species: this.species || undefined, breed: this.breed || undefined,
       city: this.city || undefined, listingType: this.type || undefined,
+      gender: this.gender || undefined, maxAgeMonths: this.maxAgeMonths ?? undefined,
       minPrice: this.minPrice ?? undefined, maxPrice: this.maxPrice ?? undefined,
       sort: this.sort
     }).subscribe({ next: (items) => this.items.set(items), error: () => this.items.set([]) });
