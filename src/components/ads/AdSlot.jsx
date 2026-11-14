@@ -1,10 +1,43 @@
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, Sparkles, X } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import { cn } from "@/lib/utils";
+
+/**
+ * Hook premium — ukrywa reklamy dla aktywnych kont PURRE Premium.
+ */
+export function usePremium() {
+  const [premium, setPremium] = useState(() => {
+    try {
+      return localStorage.getItem("purre:premium") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let alive = true;
+    base44.premium
+      .status()
+      .then((s) => {
+        if (!alive) return;
+        setPremium(!!s?.premium);
+        try {
+          localStorage.setItem("purre:premium", s?.premium ? "1" : "0");
+        } catch {}
+      })
+      .catch(() => null);
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return premium;
+}
 
 /**
  * Compact sponsored / partner card for feed & explore grids.
  * variant: "feed" | "banner" | "compact" | "interstitial"
+ * Konta PREMIUM nie widzą reklam.
  */
 export default function AdSlot({
   ad,
@@ -12,7 +45,8 @@ export default function AdSlot({
   onDismiss,
   className,
 }) {
-  if (!ad) return null;
+  const premium = usePremium();
+  if (!ad || premium) return null;
 
   const isExternal = typeof ad.href === "string" && ad.href.startsWith("http");
   const inner = (
@@ -100,7 +134,8 @@ export default function AdSlot({
 
 /** Full-screen style interstitial after arcade games */
 export function AdInterstitial({ ad, onClose, onContinue }) {
-  if (!ad) return null;
+  const premium = usePremium();
+  if (!ad || premium) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md">

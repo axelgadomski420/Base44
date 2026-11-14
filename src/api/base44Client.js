@@ -202,6 +202,8 @@ export const functions = {
   createListing: (data) => request("/api/listings/with-cost", { method: "POST", body: { data } }),
   moderateListing: (data) => request(`/api/listings/${data.listing_id}/moderate`, { method: "POST", body: {} }),
   askAssistant: (data) => request("/api/assistant/ask", { method: "POST", body: data }),
+  aiChat: (data) => request("/api/ai/chat", { method: "POST", body: data }),
+  aiHealth: () => request("/api/ai/health"),
 };
 
 export const social = {
@@ -216,11 +218,80 @@ export const social = {
   submitVerification: (body) => request("/api/social/verification", { method: "POST", body }),
 };
 
+// Rozbudowane grupy (jak na Facebooku)
+export const groupsApi = {
+  list: ({ q, type, mine } = {}) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (type && type !== "all") params.set("type", type);
+    if (mine) params.set("mine", "1");
+    const qs = params.toString();
+    return request(`/api/groups${qs ? `?${qs}` : ""}`);
+  },
+  get: (id) => request(`/api/groups/${id}`),
+  create: (body) => request("/api/groups", { method: "POST", body }),
+  update: (id, body) => request(`/api/groups/${id}`, { method: "PATCH", body }),
+  join: (id) => request(`/api/groups/${id}/join`, { method: "POST", body: {} }),
+  leave: (id) => request(`/api/groups/${id}/leave`, { method: "POST", body: {} }),
+  post: (id, body) => request(`/api/groups/${id}/posts`, { method: "POST", body }),
+};
+
+// Globalna wyszukiwarka
+export const searchApi = {
+  search: (q, type = "all") => request(`/api/search?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`),
+};
+
+// Powiadomienia
+export const notificationsApi = {
+  list: (unreadOnly = false) => request(`/api/notifications${unreadOnly ? "?unread=1" : ""}`),
+  markRead: (id) => request(`/api/notifications/${id}/read`, { method: "POST", body: {} }),
+  markAllRead: () => request("/api/notifications/read-all", { method: "POST", body: {} }),
+};
+
+// Messenger (media, odczyty, reakcje, usuwanie)
+export const messagesApi = {
+  conversations: (q) => request(`/api/messages/conversations${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  messages: (conversationId) => request(`/api/messages/conversations/${conversationId}/messages`),
+  send: (body) => request("/api/messages/send", { method: "POST", body }),
+  markRead: (id) => request(`/api/messages/${id}/read`, { method: "POST", body: {} }),
+  react: (id, emoji) => request(`/api/messages/${id}/react`, { method: "POST", body: { emoji } }),
+  remove: (id) => request(`/api/messages/${id}`, { method: "DELETE" }),
+};
+
+// Muzyka / audio do rolek
+export const reelsAudioApi = {
+  list: (q, mood) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (mood) params.set("mood", mood);
+    const qs = params.toString();
+    return request(`/api/reels-audio${qs ? `?${qs}` : ""}`);
+  },
+  add: (body) => request("/api/reels-audio", { method: "POST", body }),
+  use: (id) => request(`/api/reels-audio/${id}/use`, { method: "POST", body: {} }),
+};
+
+// Premium (bez reklam)
+export const premiumApi = {
+  status: () => request("/api/premium/status"),
+  activate: () => request("/api/premium/activate", { method: "POST", body: {} }),
+};
+
+// Zgłoszenia naruszeń
+export const reportsApi = {
+  create: (body) => request("/api/reports", { method: "POST", body }),
+};
+
 export const adminApi = {
   overview: () => request("/api/admin/overview"),
   reviewVerification: (id, body) => request(`/api/admin/verification/${id}`, { method: "POST", body }),
   reviewListing: (id, body) => request(`/api/admin/listings/${id}`, { method: "POST", body }),
   reviewPost: (id, body) => request(`/api/admin/posts/${id}`, { method: "POST", body }),
+  users: (q) => request(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  updateUser: (id, body) => request(`/api/admin/users/${id}`, { method: "PATCH", body }),
+  analyzeVerification: (id) => request(`/api/admin/verification/${id}/analyze`, { method: "POST", body: {} }),
+  resolveReport: (id, body) => request(`/api/admin/reports/${id}`, { method: "POST", body }),
+  deleteComment: (id) => request(`/api/admin/comments/${id}`, { method: "DELETE" }),
 };
 
 export const billing = {
@@ -234,6 +305,13 @@ export const base44 = {
   auth,
   functions,
   social,
+  groups: groupsApi,
+  search: searchApi,
+  notifications: notificationsApi,
+  messages: messagesApi,
+  reelsAudio: reelsAudioApi,
+  premium: premiumApi,
+  reports: reportsApi,
   admin: adminApi,
   billing,
   entities,

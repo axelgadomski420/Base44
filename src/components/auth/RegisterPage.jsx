@@ -20,9 +20,8 @@ const ACCOUNT_TYPES = [
 ];
 
 /**
- * The /register page: register → OTP → verifyOtp → setToken. Registration alone
- * does not sign the user in (the account is unverified), so the code step is never
- * skipped and loginViaEmailPassword is never called right after register.
+ * Rejestracja w jednym kroku: typ konta wybierany na formularzu, po weryfikacji
+ * od razu przekierowanie na /profile (bez ekranu onboarding).
  */
 export function RegisterPage() {
   const returnTo = safeReturnTo();
@@ -36,6 +35,13 @@ export function RegisterPage() {
   const [busy, setBusy] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState(null);
 
+  function finish(token) {
+    if (token) base44.auth.setToken(token);
+    localStorage.setItem("purre:account_type", accountType);
+    const target = returnTo && returnTo !== "/" ? returnTo : "/profile";
+    window.location.href = target;
+  }
+
   async function register(e) {
     e.preventDefault();
     setError("");
@@ -47,11 +53,7 @@ export function RegisterPage() {
     try {
       const result = await base44.auth.register(email, password);
       if (result?.access_token) {
-        base44.auth.setToken(result.access_token);
-        localStorage.setItem("purre:account_type", accountType);
-        window.location.href = `/onboarding${
-          returnTo && returnTo !== "/" ? `?returnTo=${encodeURIComponent(returnTo)}` : ""
-        }`;
+        finish(result.access_token);
         return;
       }
       setStep("otp");
@@ -72,14 +74,8 @@ export function RegisterPage() {
         setMfaChallenge(result);
         return;
       }
-      if (result?.access_token) base44.auth.setToken(result.access_token);
-      localStorage.setItem("purre:account_type", accountType);
-      window.location.href = `/onboarding${
-        returnTo && returnTo !== "/" ? `?returnTo=${encodeURIComponent(returnTo)}` : ""
-      }`;
+      finish(result?.access_token);
     } catch (err) {
-      // Verified server-side but the answer never arrived: the code is spent and
-      // there is no token, so the only way forward is a normal sign-in.
       if (isAlreadyVerified(err)) setStep("already_verified");
       else setError(err.message || "Nieprawidłowy kod weryfikacyjny");
       setBusy(false);
@@ -97,7 +93,6 @@ export function RegisterPage() {
     }
   }
 
-  // The account is verified; the second sign-in step replaces the whole page and finishes signing in.
   if (mfaChallenge) return <MfaScreen><MfaFlow challenge={mfaChallenge} returnTo={returnTo} /></MfaScreen>;
 
   if (step === "already_verified") {

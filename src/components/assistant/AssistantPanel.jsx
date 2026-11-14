@@ -11,6 +11,10 @@ const SUGGESTIONS = [
   "Jak działa edytor wideo?",
 ];
 
+/**
+ * Asystent AI połączony z lokalną Ollamą przez POST /api/ai/chat.
+ * Fallback: stary endpoint /api/assistant/ask (tryb reguł).
+ */
 export default function AssistantPanel() {
   const { isAuthenticated, navigateToLogin } = useAuth();
   const [open, setOpen] = useState(false);
@@ -28,7 +32,15 @@ export default function AssistantPanel() {
 
   useEffect(() => {
     if (!open) return;
-    base44.functions.assistantHealth().then(setHealth).catch(() => null);
+    base44.functions
+      .aiHealth()
+      .then((h) => setHealth(h))
+      .catch(() => {
+        base44.functions
+          .askAssistant({ question: "health" })
+          .then(setHealth)
+          .catch(() => null);
+      });
   }, [open]);
 
   useEffect(() => {
@@ -43,19 +55,32 @@ export default function AssistantPanel() {
       return;
     }
     setInput("");
+    const history = messages.slice(-8).map((m) => ({ role: m.role, text: m.text }));
     setMessages((m) => [...m, { role: "user", text: q }]);
     setBusy(true);
     try {
-      const result = await base44.functions.askAssistant({ question: q });
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: result.answer || result, source: result.source || "rules" },
-      ]);
+      // Główna ścieżka: lokalny LLM (Ollama) przez /api/ai/chat.
+      const result = await base44.functions.aiChat({ message: q, prompt: q, history });
+      const answer = result?.response || result?.answer || "…";
+      setMessages((m) => [...m, { role: "assistant", text: answer, source: "ollama" }]);
     } catch (err) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: err?.message || "Nie udało się uzyskać odpowiedzi.", source: "error" },
-      ]);
+      // Fallback: stary asystent regułowy.
+      try {
+        const result = await base44.functions.askAssistant({ question: q });
+        setMessages((m) => [
+          ...m,
+          { role: "assistant", text: result?.answer || String(result), source: result?.source || "rules" },
+        ]);
+      } catch (fallbackErr) {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: fallbackErr?.message || err?.message || "Nie udało się uzyskać odpowiedzi.",
+            source: "error",
+          },
+        ]);
+      }
     } finally {
       setBusy(false);
     }
@@ -79,11 +104,7 @@ export default function AssistantPanel() {
             <div className="min-w-0 flex-1">
               <p className="font-display text-sm">PURRE Assistant</p>
               <p className="text-[10px] text-muted-foreground">
-                {health?.ollama
-                  ? `Ollama · ${health.model}`
-                  : health?.externalLlm
-                    ? "LLM zewnętrzny"
-                    : "Tryb reguł lokalnych"}
+                {health?.ollama ? `Ollama · ${health.model ?? "lokalny model"}` : "Łączę z modelem…"}
               </p>
             </div>
           </div>
@@ -93,7 +114,7 @@ export default function AssistantPanel() {
               <div
                 key={i}
                 className={cn(
-                  "max-w-[90%] rounded-2xl px-3 py-2 text-sm",
+                  "max-w-[90%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm",
                   msg.role === "user"
                     ? "ml-auto bg-aura/20 text-foreground"
                     : "bg-secondary/60 text-muted-foreground"
@@ -102,6 +123,11 @@ export default function AssistantPanel() {
                 {msg.text}
               </div>
             ))}
+            {busy && (
+              <div className="max-w-[90%] rounded-2xl bg-secondary/60 px-3 py-2 text-sm text-muted-foreground">
+                <span className="animate-pulse">Piszę…</span>
+              </div>
+            )}
             <div ref={endRef} />
           </div>
 

@@ -13,7 +13,7 @@ import { listingsRouter } from "./routes/listings.routes.js";
 import { assistantRouter } from "./routes/assistant.routes.js";
 import { stripeRouter } from "./routes/stripe.routes.js";
 import { socialRouter } from "./routes/social.routes.js";
-import { adminRouter } from "./routes/admin.routes.js";
+import { adminRouter, reportsRouter } from "./routes/admin.routes.js";
 import { notificationsRouter } from "./routes/notifications.routes.js";
 import { groupsRouter } from "./routes/groups.routes.js";
 import { searchRouter } from "./routes/search.routes.js";
@@ -24,8 +24,6 @@ import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT ?? 3000);
 
-// Nginx on the live box currently forwards "/" to this API. Hand HTML and
-// assets to the TanStack preview instead of answering with "No route: GET /".
 function proxyFrontend(req, res, next) {
   if (req.method !== "GET" && req.method !== "HEAD") return next();
   const url = req.originalUrl || "/";
@@ -97,6 +95,7 @@ export function createApp() {
   app.use("/api/stripe", stripeRouter);
   app.use("/api/social", socialRouter);
   app.use("/api/admin", adminRouter);
+  app.use("/api/reports", reportsRouter);
   app.use("/api/ai", aiRoutes);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/groups", groupsRouter);
