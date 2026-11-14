@@ -25,11 +25,18 @@ public class StorageService {
     public boolean isAllowedDoc(String ct) { return ALLOWED_DOC.contains(ct); }
     public boolean isAllowedVideo(String ct) { return ALLOWED_VIDEO.contains(ct); }
 
+    /**
+     * Zapis mediów ogłoszeń/awatarów. Zwraca RELATYWNY adres web (/api/media/RRRR/MM/plik),
+     * który serwuje handler /media/** (WebMvcConfig). Nigdy nie zwracamy ścieżki systemowej.
+     */
     public String storeMedia(byte[] bytes, String contentType, String originalName) {
         String ext = extension(originalName, contentType);
-        Path dir = Paths.get(props.getUpload().getDir(), "media", String.valueOf(LocalDate.now().getYear()),
-                String.format("%02d", LocalDate.now().getMonthValue()));
-        return store(dir, UUID.randomUUID() + "." + ext, bytes);
+        LocalDate now = LocalDate.now();
+        String dir = String.format("%04d/%02d", now.getYear(), now.getMonthValue());
+        Path target = Paths.get(props.getUpload().getDir(), "media", dir);
+        String fileName = UUID.randomUUID() + "." + ext;
+        store(target, fileName, bytes);
+        return "/api/media/" + dir + "/" + fileName;
     }
 
     public String storeEncryptedDocument(byte[] bytes, String originalName) {

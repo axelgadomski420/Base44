@@ -13,8 +13,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 /**
- * Upload mediów ogłoszeń: JPG/PNG/WEBP (max 10 MB) i MP4/WEBM (max 10 MB w tym endpointcie —
- * dłuższe wideo HoloFeed trafi do osobnego pipeline'u w fazie 3).
+ * Upload mediów: JPG/PNG/WEBP (max 10 MB) i MP4/WEBM (max 10 MB).
+ * Zwraca relatywny adres web (/api/media/...), gotowy do wstawienia w <img>/<video>.
  */
 @RestController
 @RequestMapping("/media")
