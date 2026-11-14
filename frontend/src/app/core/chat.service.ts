@@ -6,6 +6,7 @@ export interface Attachment { url: string; type: 'IMAGE' | 'VIDEO' | 'FILE'; nam
 export interface ChatMessage {
   id: number; conversationId: number; senderId: number; senderName?: string; content: string;
   attachmentUrl?: string; attachmentType?: 'IMAGE' | 'VIDEO' | 'FILE'; attachmentName?: string; createdAt: string;
+  replyToId?: number; editedAt?: string; deleted?: boolean; reactions?: Record<string, number>;
 }
 export interface TypingEvent { userId: number; displayName: string; conversationId: number; }
 
@@ -57,7 +58,7 @@ export class ChatService {
     return subject.asObservable();
   }
 
-  send(conversationId: number, content: string, attachment?: Attachment): void {
+  send(conversationId: number, content: string, attachment?: Attachment, replyToId?: number): void {
     this.ensureConnected();
     const body: Record<string, unknown> = { conversationId, content };
     if (attachment) {
@@ -65,6 +66,7 @@ export class ChatService {
       body['attachmentType'] = attachment.type;
       if (attachment.name) body['attachmentName'] = attachment.name;
     }
+    if (replyToId) body['replyToId'] = replyToId;
     this.client?.publish({ destination: '/app/chat.send', body: JSON.stringify(body) });
   }
 
