@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CalendarDays, Film, Plus, ShieldCheck, Users } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import StoryRow from "@/components/feed/StoryRow";
+import { StoriesBar } from "@/components/stories/StoriesBar";
 import PostCard from "@/components/feed/PostCard";
 import DiscoverRail from "@/components/discover/DiscoverRail";
 import AdSlot from "@/components/ads/AdSlot";
@@ -153,7 +153,7 @@ function DiscoverPage() {
           </div>
 
           <div className="mt-6">
-            <StoryRow breeders={storyBreeders} />
+            <StoriesBar />
           </div>
 
           {isDemo && (

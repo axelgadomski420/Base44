@@ -15,6 +15,13 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#0a0a0f" },
+      { property: "og:site_name", content: "PURRE PETS" },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://purrepets.pl" },
+      { property: "og:title", content: "PURRE PETS — premium social marketplace dla hodowców" },
+      { property: "og:description", content: "HoloFeed, Reels, PURRE Messenger i marketplace dla hodowców psów i kotów rasowych." },
+      { property: "og:locale", content: "pl_PL" },
       { title: "PURRE PETS — premium social marketplace dla hodowców" },
       {
         name: "description",
@@ -23,6 +30,8 @@ export const Route = createRootRoute({
       },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", type: "image/svg+xml", href: "/icon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
