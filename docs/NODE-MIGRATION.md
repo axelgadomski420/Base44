@@ -88,7 +88,7 @@ Backend (`backend/.env`): `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`
 
     cd /home/ubuntu/Base44
     git fetch origin
-    git checkout feature/node-nitro-migration
+    git checkout fix/production-node-deployment
     # zapisz lokalne zmiany, jeśli są (git status; commit/stash)
     cp backend/.env.example backend/.env && nano backend/.env   # wartości po rotacji
     npm install          # aktualizuje package-lock.json po zmianie zależności
@@ -127,3 +127,40 @@ Nginx (jednorazowo, po backupie istniejących plików):
   usunąć `useServerFn` i wołać funkcje wprost.
 - `scripts/server-static.js` / `server-static.cjs` stają się zbędne — nie są już używane przez PM2;
   zostawione jako backup.
+
+## 9. Poprawki wdrożeniowe (gałąź fix/production-node-deployment)
+
+Weryfikacja techniczna migracji (npm registry / jsDelivr / dokumentacja TanStack, 2026-11-15)
+potwierdziła architekturę i naprawiła następujące problemy:
+
+1. **Konflikt peer dependencies @tanstack/ai** — lockfile rozjechał się: `@tanstack/ai-openai@0.22.8`
+   wymaga `@tanstack/ai ^0.55.0`, a w projekcie jest `@tanstack/ai 0.54.0` (oraz
+   `@tanstack/ai-react@0.24.1`, peer `^0.54.0`). Naprawa: `@tanstack/ai-openai` przypięty dokładnie
+   do **0.22.6** (peer `^0.54.0` — spójny zestaw; `openai-base@0.10.16` w lockfile spełnia
+   wymagane `^0.10.11`). Bez `--force`, bez `--legacy-peer-deps`.
+2. **Kolejność pluginów Vite** — uporządkowana jak w oficjalnym przykładzie TanStack Start
+   (examples/react/start-basic): `tanstackStart() → react() → nitro()`.
+3. **package-lock.json** — wymaga regeneracji na maszynie z npm (nadal zawiera poddrzewo Cloudflare
+   i nie ma wpisów nitro; `npm ci` zwróci błąd synchronizacji). `scripts/deploy.sh` robi wtedy
+   automatycznie `npm install` (regeneruje lockfile) i przypomina o commicie:
+       git add package-lock.json && git commit -m "chore: regenerate package-lock.json (Node migration)"
+4. **smoke-test.mjs** — zaostrzony: brak odpowiedzi HTTP jest błędem (wyjątek: `SMOKE_ALLOW_OFFLINE=1`
+   przed startem PM2). Sprawdza: artefakty buildu, brak importu `cloudflare:` w zbudowanym serwerze,
+   SSR strony głównej, routing (`/login`), statyki (`/robots.txt`) i `/api/health`.
+5. **Inicjalizacja administratora** — bezpieczna, bez otwartego endpointu HTTP:
+       cd backend && node scripts/seed-admin.js
+   (`seed-admin.js` nadaje rolę admin tylko e-mailom z `ADMIN_EMAILS` i tworzy profil/portfel;
+   `make-admin.mjs` został utwardzony — odmawia działania dla adresu spoza `ADMIN_EMAILS`).
+   Role zmienia też panel admina (`PATCH /api/admin/users/:id`), dostępny wyłącznie dla
+   kont z `ADMIN_EMAILS`.
+6. **deploy.sh** — domyślnie wdraża aktualnie wybraną gałąź (`DEPLOY_BRANCH` ma priorytet);
+   przed przełączeniem PM2 uruchamia smoke-test artefaktów; po health checkach pełny smoke-test HTTP.
+
+Potwierdzone zgodności wersji:
+- `nitro@3.0.260903-beta` eksportuje `./vite` (plugin Vite) — używany w `vite.config.js`.
+- `@tanstack/react-start@1.168.60`: `server.entry` istnieje w schemacie konfiguracji
+  (start-plugin-core 1.171.49); `@tanstack/react-start/server` eksportuje `createStartHandler`
+  (przez start-server-core 1.169.39) i `defaultStreamHandler` — custom entry `src/server.js`
+  (format `{ fetch }`) jest zgodny z dokumentacją (guide/server-entry-point).
+- Custom server entry jest opcjonalny: gdyby build zgłosił problem z `server.entry`, można usunąć
+  tę opcję — wbudowany entry + middlewary (`src/start.js`) i tak łapią błędy.
