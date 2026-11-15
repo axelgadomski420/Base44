@@ -241,12 +241,18 @@ function PublicProfilePage() {
             <h2 className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">{t("profile.pets")}</h2>
             <ul className="mt-3 grid gap-2 sm:grid-cols-2">
               {pets.map((pet) => (
-                <li key={pet.id} className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card/60 p-2.5">
-                  <Image src={pet.photos?.[0]} alt={pet.name} className="h-12 w-12 rounded-xl object-cover" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{pet.name}</p>
-                    <p className="truncate text-[10px] text-muted-foreground">{pet.breed || pet.species}</p>
-                  </div>
+                <li key={pet.id}>
+                  <Link
+                    to="/pets/$id"
+                    params={{ id: pet.id }}
+                    className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card/60 p-2.5 transition hover:border-aura/60"
+                  >
+                    <Image src={pet.photos?.[0]} alt={pet.name} className="h-12 w-12 rounded-xl object-cover" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{pet.name}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">{pet.breed || pet.species}</p>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>
