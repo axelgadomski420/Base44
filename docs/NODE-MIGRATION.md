@@ -164,3 +164,40 @@ Potwierdzone zgodności wersji:
   (format `{ fetch }`) jest zgodny z dokumentacją (guide/server-entry-point).
 - Custom server entry jest opcjonalny: gdyby build zgłosił problem z `server.entry`, można usunąć
   tę opcję — wbudowany entry + middlewary (`src/start.js`) i tak łapią błędy.
+
+## 10. Runda 2 poprawek (fix/production-node-deployment)
+
+1. **package-lock.json** — regeneracja odbywa się w CI (job `lockfile`, Node 22):
+   `npm install --package-lock-only` (bez `--force`/`--legacy-peer-deps`), następnie weryfikacja
+   `npm ci` (frontend i backend) i automatyczny commit zaktualizowanego lockfile do gałęzi.
+   **Na serwerze produkcyjnym `npm install` jest zabroniony** — `deploy.sh` używa wyłącznie
+   `npm ci` i przerywa wdrożenie z jasnym komunikatem, gdy lockfile jest poza syncem.
+2. **deploy.sh** — zmiany:
+   - kontrola czystości repo wykrywa też pliki untracked (`git status --short`); skrypt nigdy
+     nie nadpisuje lokalnych zmian,
+   - pełny smoke-test HTTP po health checkach jest WARUNKIEM sukcesu — porażka jakiegokolwiek
+     testu (SSR `/`, routing `/login`, statyki `/robots.txt`, `/api/health`) uruchamia rollback,
+   - rozszerzony rollback: przywraca `.output` (z `.output.bak-*`), `ecosystem.config.cjs`
+     (z `.config.bak-*`), konfigurację Nginx (z `.bak`) i wznawia historyczny proces PM2;
+     nie usuwa bazy, uploadów, Dockera, wolumenów ani danych,
+   - migracja historycznego procesu PM2 (`purrepet`): deploy wykrywa procesy kolidujące
+     z portami 3000/4000, **zatrzymuje** je (nie usuwa) przed startem nowych, a po pełnym
+     sukcesie smoke-testów usuwa je selektywnie (`pm2 delete <nazwa>` — nigdy `pm2 delete all`).
+     Dzięki temu na porcie 3000 nigdy nie rywalizują dwa procesy frontendu,
+   - preflight Nginx (`DEPLOY_NGINX=1`): sprawdza istnienie plików certyfikatów
+     (`/etc/letsencrypt/live/purrepets.pl/`), duplikaty `server_name purrepets.pl` w aktywnych
+     vhostach oraz zgodność `UPLOAD_DIR` (backend/.env) z `alias` w `purrepets.conf`;
+     przy problemach przerywa z listą do ręcznej naprawy (nigdy nie usuwa plików operatora).
+3. **Skrypty admina** — usunięto domyślny adres e-mail (`effdoa@gmail.com`). Bez jawnie
+   ustawionego `ADMIN_EMAILS` (backend/.env) skrypty `seed-admin.js` i `make-admin.mjs`
+   PRZERYWAJĄ działanie. Nadanie roli admin wymaga jawnej decyzji operatora.
+4. **Nginx — weryfikacja** (backend/nginx/purrepets.conf): prefiks `/api/` zachowany
+   (`proxy_pass` bez ukośnika), `/socket.io/` z nagłówkami Upgrade/Connection,
+   `/uploads/` jako alias dysku z fallbackiem do API (Range/206), cache statyków `/assets/`.
+   Założenia o ścieżkach (certyfikaty, uploady) NIE są przyjmowane bez sprawdzenia —
+   weryfikuje je preflight w deploy.sh.
+5. **CI** (`.github/workflows/ci.yml`, Node 22): npm ci → `prisma migrate deploy` (wyłącznie
+   efemeryczna baza Postgres 16 w CI) → lint → build → smoke-test artefaktów → start frontendu
+   i backendu → pełny smoke-test HTTP → start przez PM2 + weryfikacja HTTP. Produkcja nietknięta.
+6. **Backend/Prisma** — bez zmian schematu, bez automatycznych migracji; deploy robi tylko
+   `prisma generate`. Migracje: ręcznie (`npx prisma migrate deploy`), po przeglądzie.
