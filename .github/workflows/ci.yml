@@ -1,10 +1,9 @@
 # PURRE PETS — CI (Node.js 22).
-# Job 1 (lockfile): regeneruje package-lock.json w środowisku z npm (bez --force /
-#   --legacy-peer-deps), weryfikuje npm ci i commituje zaktualizowany lockfile do gałęzi.
-#   Push wykonany GITHUB_TOKEN nie wyzwala kolejnych workflow (brak pętli).
-# Job 2 (test): npm ci → prisma migrate deploy (tylko efemeryczna baza CI!) → lint → build →
-#   smoke-test artefaktów → start frontendu (Nitro) i backendu → pełny smoke-test HTTP →
-#   start przez PM2 + weryfikacja HTTP. Produkcja NIE jest dotykana.
+# Kolejność jest sekwencyjna: job "lockfile" regeneruje package-lock.json, commituje go i WYPYCHA,
+# a dopiero potem job "test" sprawdza HEAD gałęzi (commit z poprawionym lockfile). Push wykonany
+# GITHUB_TOKEN nie wyzwala kolejnego workflow — dlatego "test" musi sam pobrać nowy HEAD.
+# W "test" procesy są zarządzane wyłącznie przez PM2 (bez pkill — zero ryzyka zabicia własnego shella).
+# Produkcja NIE jest dotykana; baza istnieje tylko w ramach tego przebiegu.
 name: CI
 
 on:
@@ -16,7 +15,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -31,27 +30,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Regeneruj lockfile (npm install --package-lock-only, bez --force)
+      - name: Regeneruj lockfile (npm install --package-lock-only, bez --force / --legacy-peer-deps)
         run: npm install --package-lock-only
-      - name: Weryfikacja: npm ci przechodzi bez --force i --legacy-peer-deps
+      - name: Weryfikacja frontend: npm ci
         run: npm ci
       - name: Weryfikacja backend: npm ci
         run: cd backend && npm ci
-      - name: Commit zregenerowanego lockfile (jeśli się zmienił)
+      - name: Commit i push zregenerowanego lockfile (jeśli się zmienił)
         run: |
           if ! git diff --quiet package-lock.json; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add package-lock.json
             git commit -m "chore: regenerate package-lock.json (CI, Node 22, bez --force)"
-            git push
-            echo "LOCKFILE_UPDATED=1" >> "$GITHUB_ENV"
+            git push origin HEAD:fix/production-node-deployment
           else
             echo "Lockfile zgodny z package.json — bez zmian."
           fi
 
   test:
-    name: Build + lint + smoke-test (Node 22, PM2)
+    name: npm ci + lint + build + smoke-test + PM2 (na HEAD z lockfile)
+    needs: lockfile
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -73,8 +72,13 @@ jobs:
       JWT_SECRET: ci-only-placeholder-not-a-real-secret
       NODE_ENV: production
       UPLOAD_DIR: ${{ github.workspace }}/backend/uploads
+      PURRE_APP_DIR: ${{ github.workspace }}
     steps:
+      # HEAD gałęzi (nie github.sha): zawiera commit z lockfile wygenerowany wyżej,
+      # bo push przez GITHUB_TOKEN nie uruchamia kolejnego workflow.
       - uses: actions/checkout@v4
+        with:
+          ref: fix/production-node-deployment
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -92,38 +96,32 @@ jobs:
         run: npm run lint
       - name: Build (Vite + Nitro)
         run: npm run build
-      - name: Smoke-test artefaktów (przed startem serwerów)
+      - name: Smoke-test artefaktów (przed startem procesów)
         run: SMOKE_ALLOW_OFFLINE=1 npm test
-      - name: Start frontendu (Nitro node-server, 127.0.0.1:3000)
+      - name: Start frontendu + backendu przez PM2 (PURRE_APP_DIR = checkout)
         run: |
-          PORT=3000 HOST=127.0.0.1 node .output/server/index.mjs > front.log 2>&1 &
-          for i in $(seq 1 20); do
-            curl -sf -o /dev/null http://127.0.0.1:3000/ && break
-            sleep 1
-          done
-      - name: Start backendu (Express, 127.0.0.1:4000)
+          mkdir -p logs
+          npm install -g pm2
+          pm2 start ecosystem.config.cjs
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:3000/ && break; sleep 1; done
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:4000/api/health && break; sleep 1; done
+      - name: Weryfikacja, że PM2 uruchomił procesy w katalogu checkoutu
         run: |
-          cd backend && PORT=4000 node src/server.js > ../backend.log 2>&1 &
-          for i in $(seq 1 20); do
-            curl -sf -o /dev/null http://127.0.0.1:4000/api/health && break
-            sleep 1
-          done
+          pm2 describe purrepets-frontend | grep -F "$GITHUB_WORKSPACE"
+          pm2 describe purrepets-backend  | grep -F "$GITHUB_WORKSPACE"
+          pm2 ls
       - name: Pełny smoke-test HTTP (SSR /, /login, /robots.txt, /api/health)
         run: npm test
-      - name: Test uruchomienia przez PM2
+      - name: Sprzątanie — wyłącznie nasze procesy PM2
+        if: always()
         run: |
-          npm install -g pm2
-          pkill -f '.output/server/index.mjs' || true
-          pkill -f 'backend/src/server.js' || true
-          sleep 2
-          pm2 start ecosystem.config.cjs
-          sleep 5
-          curl -fsS http://127.0.0.1:3000/ | grep -qi '<html'
-          curl -fsS http://127.0.0.1:4000/api/health | grep -q '"ok":true'
-          pm2 ls
-          pm2 kill
+          pm2 delete purrepets-frontend || true
+          pm2 delete purrepets-backend || true
+          pm2 kill || true
       - name: Logi diagnostyczne (przy porażce)
         if: failure()
         run: |
-          echo '--- front.log ---'; tail -50 front.log || true
-          echo '--- backend.log ---'; tail -50 backend.log || true
+          echo '--- PM2 frontend-out ---'; tail -50 logs/frontend-out.log || true
+          echo '--- PM2 frontend-error ---'; tail -50 logs/frontend-error.log || true
+          echo '--- PM2 backend-out ---'; tail -50 logs/backend-out.log || true
+          echo '--- PM2 backend-error ---'; tail -50 logs/backend-error.log || true
