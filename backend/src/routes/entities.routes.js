@@ -25,6 +25,10 @@ const querySchema = z.object({
   skip: z.coerce.number().int().min(0).optional(),
 });
 
+function userIdOf(req) {
+  return req.user?.id || req.user?.userId || req.user?.sub || null;
+}
+
 function resolve(req) {
   const entity = getEntity(req.params.entity);
   if (!entity) throw notFound(`Unknown entity "${req.params.entity}"`);
@@ -35,9 +39,9 @@ function canWrite(entity, req, row) {
   if (isAdmin(req)) return true;
   switch (entity.write) {
     case "ownerOrAdmin":
-      return row.created_by_id === (req.user?.id || req.user?.userId || req.user?.sub);
+      return row.created_by_id === userIdOf(req);
     case "memberOrAdmin":
-      return Array.isArray(row.members) && row.members.includes((req.user?.id || req.user?.userId || req.user?.sub));
+      return Array.isArray(row.members) && row.members.includes(userIdOf(req));
     case "adminOnly":
     case "serviceOnly":
       return false;
@@ -46,25 +50,33 @@ function canWrite(entity, req, row) {
   }
 }
 
-async function ensureWalletFor(user) {
-  const existing = await prisma.wallet.findUnique({ where: { user_id: (req.user?.id || req.user?.userId || user?.id) } });
+// FIX: przyjmowało req z zewnątrz (ReferenceError → 500 na stronie startowej).
+async function ensureWalletFor(userId) {
+  if (!userId) return null;
+  const existing = await prisma.wallet.findUnique({ where: { user_id: userId } });
   if (existing) return existing;
   return prisma.wallet.create({
-    data: { user_id: (req.user?.id || req.user?.userId || user?.id), coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
+    data: { user_id: userId, coins: 0, xp: 0, level: 1, badges: [], extra_media: 0 },
   });
 }
 
-// Wallet.filter({ user_id: me }) must behave like Base44's loadWallet helper:
-// return the wallet, creating a default one when it does not exist yet.
+// Wallet.filter({ user_id: me }) musi działać jak helper loadWallet z Base44:
+// zwraca portfel, tworząc domyślny, gdy nie istnieje. Błąd portfela NIGDY nie może
+// wywalić zapytania (awaria bazy ≠ awaria feedu).
 async function maybeEnsureWallet(entity, req, where) {
   if (entity.delegate !== "wallet" || !req.user) return;
-  const branches = [where, ...(Array.isArray(where.AND) ? where.AND : [])];
-  const mentionsMe = branches.some(
-    (branch) =>
-      branch?.user_id === ((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub) ||
-      (Array.isArray(branch?.user_id?.in) && branch.user_id.in.includes(((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub)))
-  );
-  if (mentionsMe) await ensureWalletFor(req.user);
+  try {
+    const branches = [where, ...(Array.isArray(where.AND) ? where.AND : [])];
+    const myId = userIdOf(req);
+    const mentionsMe = branches.some(
+      (branch) =>
+        branch?.user_id === myId ||
+        (Array.isArray(branch?.user_id?.in) && branch.user_id.in.includes(myId))
+    );
+    if (mentionsMe) await ensureWalletFor(myId);
+  } catch (err) {
+    console.error("wallet ensure failed (nieprzerywające):", err?.message);
+  }
 }
 
 function baseReadWhere(entity, req) {
@@ -92,7 +104,7 @@ entitiesRouter.get(
   })
 );
 
-// POST /api/entities/:entity/query  { where, sort, limit, offset } â { items }
+// POST /api/entities/:entity/query  { where, sort, limit, offset } → { items }
 entitiesRouter.post(
   "/:entity/query",
   optionalAuth,
@@ -111,7 +123,7 @@ entitiesRouter.post(
   })
 );
 
-// POST /api/entities/:entity/count  { where } â number
+// POST /api/entities/:entity/count  { where } → number
 entitiesRouter.post(
   "/:entity/count",
   optionalAuth,
@@ -138,7 +150,7 @@ entitiesRouter.get(
   })
 );
 
-// POST /api/entities/:entity â create
+// POST /api/entities/:entity — create
 entitiesRouter.post(
   "/:entity",
   requireAuth,
@@ -155,15 +167,15 @@ entitiesRouter.post(
     Object.assign(data, entity.forcedCreate ? entity.forcedCreate(req.user) : {});
     if (req.params.entity === "Message") {
       const members = Array.isArray(data.members) ? data.members : [];
-      if (!members.includes(((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub))) throw forbidden("Sender must be a conversation member");
+      if (!members.includes(userIdOf(req))) throw forbidden("Sender must be a conversation member");
     }
-    const row = await prisma[entity.delegate].create({ data: { ...data, created_by_id: ((req.user?.id || req.user?.userId || req.user?.sub) || req.user?.userId || req.user?.sub) } });
+    const row = await prisma[entity.delegate].create({ data: { ...data, created_by_id: userIdOf(req) } });
     if (entity.afterCreate) await entity.afterCreate(row, req.user);
     res.status(201).json(row);
   })
 );
 
-// PATCH /api/entities/:entity/:id â partial update (PUT works the same)
+// PATCH /api/entities/:entity/:id — partial update (PUT works the same)
 async function updateHandler(req, res) {
   const entity = resolve(req);
   if (entity.write === "serviceOnly") {

@@ -4,6 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import aiRoutes from "./routes/ai.routes.js";
 import { config } from "./config.js";
+import { prisma } from "./prisma.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { entitiesRouter } from "./routes/entities.routes.js";
 import { uploadsRouter } from "./routes/uploads.routes.js";
@@ -23,6 +24,7 @@ import { premiumRouter } from "./routes/premium.routes.js";
 import { e2eRouter } from "./routes/e2e.routes.js";
 import { storiesRouter } from "./routes/stories.routes.js";
 import { profileRouter } from "./routes/profile.routes.js";
+import { musicRouter } from "./routes/music.routes.js";
 import { notFoundHandler, errorHandler } from "./lib/errors.js";
 
 const FRONTEND_PORT = Number(process.env.FRONTEND_PORT ?? 3000);
@@ -86,7 +88,15 @@ export function createApp() {
     express.static(path.resolve(config.uploadDir), { fallthrough: true, maxAge: "30d" })
   );
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true, now: new Date().toISOString() }));
+  // Health: proces + baza (do triple-check i monitoringu).
+  app.get("/api/health", async (_req, res) => {
+    let db = "down";
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      db = "up";
+    } catch {}
+    res.json({ ok: true, db, now: new Date().toISOString() });
+  });
 
   app.use("/api/auth", authRouter);
   app.use("/api/entities", entitiesRouter);
@@ -109,6 +119,7 @@ export function createApp() {
   app.use("/api/e2e", e2eRouter);
   app.use("/api/stories", storiesRouter);
   app.use("/api/profile", profileRouter);
+  app.use("/api/music", musicRouter);
 
   app.use(proxyFrontend);
   app.use(notFoundHandler);
