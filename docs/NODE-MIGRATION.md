@@ -91,8 +91,9 @@ Backend (`backend/.env`): `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`
     git checkout fix/production-node-deployment
     # zapisz lokalne zmiany, jeśli są (git status; commit/stash)
     cp backend/.env.example backend/.env && nano backend/.env   # wartości po rotacji
-    npm install          # aktualizuje package-lock.json po zmianie zależności
-    bash scripts/deploy.sh
+    # UWAGA: npm install na produkcji jest ZABRONIONY — package-lock.json regeneruje
+    #        CI (job "lockfile", Node 22) i commituje go do gałęzi.
+    bash scripts/deploy.sh   # wyłącznie npm ci; przerywa, gdy lockfile poza syncem
     npm test
     bash scripts/triple-check.sh
 
@@ -140,10 +141,10 @@ potwierdziła architekturę i naprawiła następujące problemy:
    wymagane `^0.10.11`). Bez `--force`, bez `--legacy-peer-deps`.
 2. **Kolejność pluginów Vite** — uporządkowana jak w oficjalnym przykładzie TanStack Start
    (examples/react/start-basic): `tanstackStart() → react() → nitro()`.
-3. **package-lock.json** — wymaga regeneracji na maszynie z npm (nadal zawiera poddrzewo Cloudflare
-   i nie ma wpisów nitro; `npm ci` zwróci błąd synchronizacji). `scripts/deploy.sh` robi wtedy
-   automatycznie `npm install` (regeneruje lockfile) i przypomina o commicie:
-       git add package-lock.json && git commit -m "chore: regenerate package-lock.json (Node migration)"
+3. **package-lock.json** — wymagał regeneracji (zawierał poddrzewo Cloudflare, brak wpisów nitro;
+   `npm ci` zwracał błąd synchronizacji). **Runda 2:** regenerację robi CI (job `lockfile`:
+   `npm install --package-lock-only` + weryfikacja `npm ci` + automatyczny commit), a `deploy.sh`
+   używa wyłącznie `npm ci` — `npm install` na produkcji jest zabroniony (szczegóły: sekcja 10).
 4. **smoke-test.mjs** — zaostrzony: brak odpowiedzi HTTP jest błędem (wyjątek: `SMOKE_ALLOW_OFFLINE=1`
    przed startem PM2). Sprawdza: artefakty buildu, brak importu `cloudflare:` w zbudowanym serwerze,
    SSR strony głównej, routing (`/login`), statyki (`/robots.txt`) i `/api/health`.
