@@ -22,6 +22,7 @@ function PublicProfilePage() {
   const [starting, setStarting] = useState(false);
   const [profile, setProfile] = useState(null);
   const [listings, setListings] = useState([]);
+  const [posts, setPosts] = useState([]);
   const [pets, setPets] = useState([]);
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(false);
@@ -35,12 +36,14 @@ function PublicProfilePage() {
           base44.entities.Listing.filter({ seller_id: record.user_id }, { sort: "-created_date", limit: 12 }),
           base44.entities.Pet.filter({ owner_id: record.user_id }, { limit: 12 }),
           base44.entities.Follow.count({ following_id: record.user_id }),
+          base44.entities.Post.filter({ author_id: record.user_id, status: "published" }, { sort: "-created_date", limit: 12 }),
         ]);
       })
-      .then(([listingPage, petPage, followCount]) => {
+      .then(([listingPage, petPage, followCount, postPage]) => {
         setListings(listingPage.items ?? []);
         setPets(petPage.items ?? []);
         setFollowers(followCount ?? 0);
+        setPosts(postPage.items ?? []);
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -161,6 +164,9 @@ function PublicProfilePage() {
           <span>
             <b className="text-foreground">{pets.length}</b> {t("profile.pets")}
           </span>
+          <span>
+            <b className="text-foreground">{posts.length}</b> {t("profile.posts")}
+          </span>
         </div>
 
         {profile.bio && (
@@ -211,6 +217,35 @@ function PublicProfilePage() {
                   <Image src={url} alt={`${profile.display_name} — zdjęcie ${i + 1}`} className="aspect-square w-full object-cover transition hover:scale-105" />
                 </a>
               ))}
+            </div>
+          </section>
+        )}
+
+        {posts.length > 0 && (
+          <section className="mt-6">
+            <h2 className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Publikacje</h2>
+            <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+              {posts.map((post) => {
+                const href = post.video_url || post.image_urls?.[0] || post.image_url || "";
+                if (!href) return null;
+                const isVideo = Boolean(post.video_url);
+                return (
+                  <a
+                    key={post.id}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative overflow-hidden rounded-xl border border-border/70"
+                  >
+                    <Image src={isVideo ? post.image_urls?.[0] || post.image_url : href} alt={post.caption?.slice(0, 60) || "Publikacja"} className="aspect-square w-full object-cover transition hover:scale-105" />
+                    {isVideo && (
+                      <span className="absolute bottom-1.5 right-1.5 rounded-full bg-background/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider">
+                        Wideo
+                      </span>
+                    )}
+                  </a>
+                );
+              })}
             </div>
           </section>
         )}
