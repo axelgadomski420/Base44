@@ -24,7 +24,6 @@ BRANCH="${DEPLOY_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
 FRONT_URL="${FRONT_URL:-http://127.0.0.1:3000}"
 API_HEALTH="${API_HEALTH:-http://127.0.0.1:4000/api/health}"
 NGINX_DEST="/etc/nginx/sites-available/purrepets"
-OUR_PM2_APPS="purrepets-frontend purrepets-backend"
 
 log() { echo "==> $*"; }
 die() { echo "❌ $*" >&2; exit 1; }
@@ -56,7 +55,7 @@ rollback() {
   if [ "$NGINX_INSTALLED" = "1" ] && [ -n "${NGINX_BAK:-}" ] && [ -f "$NGINX_BAK" ]; then
     sudo cp "$NGINX_BAK" "$NGINX_DEST" && sudo nginx -t && sudo systemctl reload nginx \
       && log "  przywrócono konfigurację Nginx z $NGINX_BAK" \
-      || log "  ⚠️ nie udało się przywrócić Nginx — sprawdź ręcznie ($NGINX_BAK)"
+      || log "  ⚠️ nie udało się przywrócić Nginx — sprawdź ręcznie (backup: $NGINX_BAK)"
   fi
   if [ -n "${LEGACY_APP:-}" ]; then
     pm2 restart "$LEGACY_APP" >/dev/null 2>&1 || true
@@ -94,7 +93,7 @@ log "[3/12] backend/.env — kontrola"
 log "[4/12] Zależności — wyłącznie npm ci (npm install na produkcji zabroniony)"
 if ! npm ci; then
   die "npm ci (frontend) nie powiódł się — package-lock.json poza syncem z package.json.
-      Zregeneruj lockfile w środowisku z npm (lokalnie lub CI): npm install --package-lock-only,
+      Zregeneruj lockfile w środowisku z npm (lokalnie albo CI): npm install --package-lock-only,
       zacommituj package-lock.json i spróbuj ponownie. NIE używaj --force ani --legacy-peer-deps."
 fi
 if ! ( cd "$BACKEND" && npm ci ); then
@@ -127,6 +126,45 @@ log "    .output/server/index.mjs OK"
 log "[8/12] Smoke-test artefaktów (przed przełączeniem PM2)"
 SMOKE_ALLOW_OFFLINE=1 node scripts/smoke-test.mjs || die "Smoke-test artefaktów nie przeszedł — wstrzymuję wdrożenie (PM2 nietknięty)"
 
+# --- Nginx (opcjonalnie: DEPLOY_NGINX=1) ------------------------------------
+if [ "${DEPLOY_NGINX:-0}" = "1" ]; then
+  log "[8b/12] Nginx: preflight (certyfikaty, duplikaty vhostów, ścieżki uploadów)"
+  problems=""
+  for f in \
+    /etc/letsencrypt/live/purrepets.pl/fullchain.pem \
+    /etc/letsencrypt/live/purrepets.pl/privkey.pem \
+    /etc/letsencrypt/options-ssl-nginx.conf \
+    /etc/letsencrypt/ssl-dhparams.pem; do
+    [ -f "$f" ] || problems="${problems}brak pliku: $f; "
+  done
+  # Duplikaty server_name purrepets.pl w aktywnych vhostach (poza naszym plikiem docelowym).
+  dup_files="$(grep -rlE 'server_name[^;]*purrepets\.pl' /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null || true)"
+  dup_count="$(echo "$dup_files" | grep -c . || true)"
+  if [ "$dup_count" -gt 1 ]; then
+    echo "$dup_files"
+    problems="${problems}server_name purrepets.pl występuje w kilku aktywnych vhostach (powyżej) — usuń duplikaty ręcznie (z backupem); "
+  fi
+  # Zgodność ścieżki uploadów: UPLOAD_DIR z backend/.env vs alias w purrepets.conf.
+  up_dir="$(grep -E '^UPLOAD_DIR=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '\"' || true)"
+  up_dir="${up_dir:-/var/www/purrepets/uploads}"
+  grep -q "alias ${up_dir}/" "$BACKEND/nginx/purrepets.conf" \
+    || problems="${problems}UPLOAD_DIR ($up_dir) niezgodny z aliasem w backend/nginx/purrepets.conf; "
+  [ -d "$up_dir" ] || problems="${problems}katalog uploadów $up_dir nie istnieje na serwerze; "
+  [ -z "$problems" ] || die "Preflight Nginx nie przeszedł: $problems"
+
+  log "    instalacja konfiguracji (z backupem) + nginx -t + reload"
+  NGINX_BAK="$APP_DIR/nginx.bak-$STAMP"
+  sudo cp "$NGINX_DEST" "$NGINX_BAK" 2>/dev/null || NGINX_BAK=""
+  sudo cp "$BACKEND/nginx/purrepets.conf" "$NGINX_DEST"
+  sudo ln -sf "$NGINX_DEST" /etc/nginx/sites-enabled/purrepets
+  if ! sudo nginx -t; then
+    if [ -n "$NGINX_BAK" ]; then sudo cp "$NGINX_BAK" "$NGINX_DEST"; fi
+    die "nginx -t nie przeszedł — przywrócono poprzednią konfigurację (backup: $NGINX_BAK)"
+  fi
+  sudo systemctl reload nginx
+  NGINX_INSTALLED=1
+fi
+
 log "[9/12] PM2: migracja historycznego procesu + startOrReload"
 # Wykryj historyczne procesy (np. 'purrepet') kolidujące z naszymi portami/nazwami.
 LEGACY_APP="$(pm2 jlist 2>/dev/null | node -e '
@@ -134,7 +172,7 @@ let d="";process.stdin.on("data",(c)=>d+=c).on("end",()=>{
   try{
     const apps=JSON.parse(d);
     const ours=new Set(["purrepets-frontend","purrepets-backend"]);
-    const hits=apps.filter((a)=>!ours.has(a.name)&&(
+    const hits=apps.filter((a)=>!ours.has(a.name||"")&&(
       /^purrepet/i.test(a.name||"")||
       [3000,4000].includes(Number((a.pm2_env&&a.pm2_env.env&&a.pm2_env.env.PORT)??(a.env&&a.env.PORT)??-1))
     ));
@@ -182,9 +220,3 @@ fi
 ls -1dt "$APP_DIR"/.output.bak-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 log "✅ Wdrożenie zakończone. Logi: pm2 logs purrepets-frontend purrepets-backend --lines 100 --nostream"
 exit 0
-
-# --- Opcjonalna instalacja Nginx (DEPLOY_NGINX=1) — patrz docs/NODE-MIGRATION.md -------------
-# Aby przenieść powyższy blok do skryptu, wstaw przed [9/12]:
-#   sudo cp "$BACKEND/nginx/purrepets.conf" /etc/nginx/sites-available/purrepets
-#   sudo ln -sf ... && sudo nginx -t && sudo systemctl reload nginx
-# Pełna wersja z preflightem certyfikatów/duplikatów/ścieżek: scripts/deploy-nginx.sh
