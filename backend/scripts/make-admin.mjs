@@ -2,14 +2,20 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 // Bezpieczna inicjalizacja administratora (CLI na serwerze, bez endpointu HTTP).
-// Rola "admin" nadawana jest WYŁĄCZNIE e-mailom z listy ADMIN_EMAILS (backend/.env) —
-// skrypt odmówi działania dla dowolnego innego adresu.
-const email = String(process.argv[2] ?? "").trim().toLowerCase();
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "effdoa@gmail.com")
+// BEZPIECZEŃSTWO: bez jawnie ustawionej zmiennej ADMIN_EMAILS skrypt PRZERYWA działanie,
+// a rola "admin" nadawana jest wyłącznie adresom z tej listy — nigdy domyślnie.
+const adminEmailsRaw = process.env.ADMIN_EMAILS;
+if (!adminEmailsRaw || !adminEmailsRaw.trim()) {
+  console.error("[make-admin] PRZERWANO: zmienna ADMIN_EMAILS nie jest ustawiona.");
+  console.error("[make-admin] Ustaw ją jawnie w backend/.env, np.: ADMIN_EMAILS=twoj@email.com");
+  process.exit(1);
+}
+const ADMIN_EMAILS = adminEmailsRaw
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+const email = String(process.argv[2] ?? "").trim().toLowerCase();
 if (!email) {
   console.error("Użycie: node scripts/make-admin.mjs <email>");
   process.exit(1);
