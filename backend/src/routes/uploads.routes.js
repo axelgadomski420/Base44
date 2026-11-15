@@ -4,7 +4,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import multer from "multer";
 import { config } from "../config.js";
-import { requireAuth } from "../lib/auth.js";
+import { requireAuth, isAdmin } from "../lib/auth.js";
 import { asyncHandler, badRequest } from "../lib/errors.js";
 
 export const uploadsRouter = Router();
@@ -150,6 +150,75 @@ uploadsRouter.get("/file/:name", (req, res) => {
   }
 
   res.setHeader("Content-Length", stat.size);
+  const stream = fs.createReadStream(file);
+  stream.on("error", () => {
+    if (!res.headersSent) res.status(500).end();
+    else res.destroy();
+  });
+  stream.pipe(res);
+});
+
+
+// ---------------------------------------------------------------- Prywatne dokumenty (weryfikacja hodowcy)
+// Katalog celowo POZA publicznym aliasem /uploads/ w Nginx (ten serwuje uploadRoot bez autoryzacji).
+// Dostęp WYŁĄCZNIE przez GET /api/uploads/private/:userId/:name z tokenem — właściciel pliku lub admin.
+
+const privateRoot = path.join(path.dirname(uploadRoot), "purrepets-private");
+
+const privateStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const dir = path.join(privateRoot, String(req.user.id));
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
+    const safeExt = /^\.[a-z0-9]+$/.test(ext) ? ext : (file.mimetype === "application/pdf" ? ".pdf" : (MIME_EXT[file.mimetype] ?? ""));
+    cb(null, `${Date.now()}-${crypto.randomUUID()}${safeExt}`);
+  },
+});
+
+const privateUpload = multer({
+  storage: privateStorage,
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const ok = file.mimetype === "application/pdf" || (typeof file.mimetype === "string" && file.mimetype.startsWith("image/"));
+    if (!ok) return cb(badRequest(`Nieobsługiwany typ dokumentu: ${file.mimetype}`));
+    cb(null, true);
+  },
+});
+
+// POST /api/uploads/private (multipart, pole "file") — wymaga zalogowania.
+uploadsRouter.post(
+  "/private",
+  requireAuth,
+  privateUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw badRequest('No file uploaded (expected multipart field "file")');
+    const fileUrl = `/api/uploads/private/${req.user.id}/${req.file.filename}`;
+    res.status(201).json({ file_url: fileUrl, url: fileUrl, size: req.file.size, type: req.file.mimetype });
+  })
+);
+
+// GET /api/uploads/private/:userId/:name — tylko właściciel lub admin; brak publicznego cache.
+uploadsRouter.get("/private/:userId/:name", requireAuth, (req, res) => {
+  if (req.user.id !== req.params.userId && !isAdmin(req)) {
+    return res.status(403).json({ error: { message: "Brak dostępu do dokumentu", code: "FORBIDDEN" } });
+  }
+  const safe = path.basename(req.params.name);
+  if (!safe || safe !== req.params.name || safe.includes("..")) {
+    return res.status(404).json({ error: { message: "File not found", code: "NOT_FOUND" } });
+  }
+  const userDir = path.resolve(privateRoot, req.params.userId);
+  const file = path.resolve(userDir, safe);
+  if (!file.startsWith(userDir + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    return res.status(404).json({ error: { message: "File not found", code: "NOT_FOUND" } });
+  }
+  const type = EXT_TYPE[path.extname(file).toLowerCase()] ?? (safe.toLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Type", type);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Length", String(fs.statSync(file).size));
   const stream = fs.createReadStream(file);
   stream.on("error", () => {
     if (!res.headersSent) res.status(500).end();

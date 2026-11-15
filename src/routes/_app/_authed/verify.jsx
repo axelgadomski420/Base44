@@ -39,7 +39,7 @@ function VerifyPage() {
     setFileName(file.name);
     setBusy(true);
     try {
-      const result = await base44.integrations.Core.UploadPublicFile({ file });
+      const result = await base44.integrations.Core.UploadPrivateFile({ file });
       setForm((current) => ({ ...current, document_url: result.file_url || result.url || "" }));
       toast.success("Dokument wgrany");
     } catch (error) {

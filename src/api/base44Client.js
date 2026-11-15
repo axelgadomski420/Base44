@@ -349,6 +349,21 @@ export const typingApi = {
 // URL gniazda realtime (Socket.IO) — używane przez ChatWindow.
 export const socketUrl = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
 
+// Otwiera plik wymagający autoryzacji (np. prywatny dokument weryfikacji) w nowej karcie.
+export async function openAuthorizedFile(url) {
+  if (typeof window === "undefined") return;
+  const target = /^https?:\/\//.test(url) ? url : `${API_URL}${url}`;
+  const headers = {};
+  const current = token();
+  if (current) headers.Authorization = `Bearer ${current}`;
+  const response = await fetch(target, { headers, credentials: "omit" });
+  if (!response.ok) throw new ApiError(response.status, null);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+}
+
 export const base44 = {
   auth,
   functions,
@@ -372,6 +387,12 @@ export const base44 = {
         const formData = new FormData();
         formData.append("file", file);
         return request("/api/uploads", { method: "POST", formData });
+      },
+      async UploadPrivateFile({ file }) {
+        // Dokumenty prywatne (np. weryfikacja hodowcy) — NIGDY do publicznego /uploads.
+        const formData = new FormData();
+        formData.append("file", file);
+        return request("/api/uploads/private", { method: "POST", formData });
       },
     },
   },
