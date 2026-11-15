@@ -1,67 +1,51 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, Send, X } from "lucide-react";
 import { toast } from "sonner";
-import { base44, storiesApi } from "@/api/base44Client";
+import { storiesApi } from "@/api/base44Client";
+import StoryComposer, { filterCss } from "@/components/stories/StoryComposer";
 import { cn } from "@/lib/utils";
 
 /**
  * StoriesBar + StoryViewer — pełnoekranowe relacje (24 h) z paskiem czasu,
- * automatycznym przejściem, reakcjami i publikacją zdjęć/wideo z muzyką.
+ * automatycznym przejściem, reakcjami, filtrami, nakładką i muzyką.
  */
 export function StoriesBar({ onOpen }) {
   const [groups, setGroups] = useState([]);
-  const [creating, setCreating] = useState(false);
-  const fileRef = useRef(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+
+  const reload = () => storiesApi.list().then((r) => setGroups(r?.groups ?? [])).catch(() => null);
 
   useEffect(() => {
-    storiesApi.list().then((r) => setGroups(r?.groups ?? [])).catch(() => null);
+    reload();
   }, []);
 
-  const publish = async (file) => {
-    if (!file) return;
-    setCreating(true);
-    try {
-      const up = await base44.integrations.Core.UploadPublicFile({ file });
-      await storiesApi.create({
-        media_url: up.file_url,
-        media_type: file.type.startsWith("video") ? "video" : "image",
-      });
-      toast.success("Relacja opublikowana — zniknie po 24 h");
-      const r = await storiesApi.list();
-      setGroups(r?.groups ?? []);
-    } catch (err) {
-      toast.error(err?.message ?? "Nie udało się dodać relacji");
-    } finally {
-      setCreating(false);
-    }
-  };
-
   return (
-    <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 py-3">
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={creating}
-        className="flex h-24 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border/70 text-muted-foreground"
-      >
-        <Plus className="h-5 w-5" />
-        <span className="text-[9px] uppercase tracking-wider">Relacja</span>
-        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { publish(e.target.files?.[0]); e.target.value = ""; }} />
-      </button>
-      {groups.map((g) => (
+    <>
+      <div className="no-scrollbar flex gap-3 overflow-x-auto px-4 py-3">
         <button
-          key={g.author_id}
           type="button"
-          onClick={() => onOpen?.(g)}
-          className="relative h-24 w-16 shrink-0 overflow-hidden rounded-2xl ring-2 ring-aura/60"
+          onClick={() => setComposerOpen(true)}
+          className="flex h-24 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border/70 text-muted-foreground transition hover:border-aura/60 hover:text-aura"
         >
-          <img src={g.stories[0]?.media_url} alt="" className="h-full w-full object-cover" />
-          <span className="absolute bottom-1 left-1 right-1 truncate text-[9px] font-semibold text-white drop-shadow">
-            {g.author_name}
-          </span>
+          <Plus className="h-5 w-5" />
+          <span className="text-[9px] uppercase tracking-wider">Relacja</span>
         </button>
-      ))}
-    </div>
+        {groups.map((g) => (
+          <button
+            key={g.author_id}
+            type="button"
+            onClick={() => onOpen?.(g)}
+            className="relative h-24 w-16 shrink-0 overflow-hidden rounded-2xl ring-2 ring-aura/60"
+          >
+            <img src={g.stories[0]?.media_url} alt="" className="h-full w-full object-cover" style={{ filter: filterCss(g.stories[0]?.filter) }} />
+            <span className="absolute bottom-1 left-1 right-1 truncate text-[9px] font-semibold text-white drop-shadow">
+              {g.author_name}
+            </span>
+          </button>
+        ))}
+      </div>
+      {composerOpen && <StoryComposer onClose={() => setComposerOpen(false)} onPublished={reload} />}
+    </>
   );
 }
 
@@ -69,7 +53,9 @@ export function StoryViewer({ group, onClose }) {
   const [idx, setIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [reacted, setReacted] = useState(null);
+  const [muted, setMuted] = useState(true);
   const timerRef = useRef(null);
+  const audioRef = useRef(null);
   const stories = group?.stories ?? [];
   const current = stories[idx];
 
@@ -90,6 +76,28 @@ export function StoryViewer({ group, onClose }) {
     }, 100);
     return () => clearInterval(timerRef.current);
   }, [idx, current, stories.length, onClose]);
+
+  // Muzyka relacji (30 s podgląd z iTunes lub biblioteka PURRE).
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (current?.music_url && !current.media_type?.includes("video")) {
+      const audio = new Audio(current.music_url);
+      audio.loop = true;
+      audio.muted = muted;
+      audio.volume = 0.5;
+      audioRef.current = audio;
+      audio.play().catch(() => null);
+    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [current, muted]);
 
   if (!current) return null;
 
@@ -116,6 +124,11 @@ export function StoryViewer({ group, onClose }) {
         <span className="text-[10px] text-white/60">
           {new Date(current.created_date).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}
         </span>
+        {current.music_url && (
+          <button type="button" onClick={() => setMuted((m) => !m)} className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] text-white">
+            {muted ? "♪ wyciszone" : "♪ gra"}
+          </button>
+        )}
         <button type="button" onClick={onClose} className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-white/10 text-white">
           <X className="h-4 w-4" />
         </button>
@@ -123,9 +136,16 @@ export function StoryViewer({ group, onClose }) {
 
       <div className="relative flex-1" onClick={() => (idx + 1 < stories.length ? setIdx(idx + 1) : onClose?.())}>
         {current.media_type === "video" ? (
-          <video src={current.media_url} autoPlay playsInline className="h-full w-full object-contain" />
+          <video src={current.media_url} autoPlay playsInline className="h-full w-full object-contain" style={{ filter: filterCss(current.filter) }} />
         ) : (
-          <img src={current.media_url} alt="" className="h-full w-full object-contain" />
+          <img src={current.media_url} alt="" className="h-full w-full object-contain" style={{ filter: filterCss(current.filter) }} />
+        )}
+        {current.overlay_text && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
+            <span className="rounded-lg bg-black/35 px-3 py-1.5 text-center text-base font-semibold text-white" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.7)" }}>
+              {current.overlay_text}
+            </span>
+          </div>
         )}
         {current.caption && (
           <p className="absolute bottom-20 left-0 right-0 px-6 text-center text-sm text-white drop-shadow">{current.caption}</p>
@@ -142,7 +162,10 @@ export function StoryViewer({ group, onClose }) {
           <button
             key={emoji}
             type="button"
-            onClick={() => react(emoji)}
+            onClick={(e) => {
+              e.stopPropagation();
+              react(emoji);
+            }}
             className={cn("grid h-11 w-11 place-items-center rounded-full bg-white/10 text-xl transition", reacted === emoji && "bg-aura/40 scale-110")}
           >
             {emoji}

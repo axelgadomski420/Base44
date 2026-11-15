@@ -480,6 +480,8 @@ model Story {
   caption      String?
   music_title  String?
   music_url    String?
+  filter       String?  // preset filtra (Instagram-style): warm | cool | mono | vivid | fade | drama
+  overlay_text String?  // tekst nakładki na relacji
   views        Int      @default(0)
   viewers      String[] @default([])
   expires_at   DateTime // relacja żyje 24 h
