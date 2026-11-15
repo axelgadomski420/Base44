@@ -7,7 +7,6 @@ import { RodoBanner } from "@/components/common/RodoBanner";
 import { AuthProvider } from "@/lib/AuthContext";
 import { I18nProvider } from "@/lib/i18n";
 import { ThemeProvider } from "@/lib/theme";
-import { Base44Scripts } from "base44:document";
 import appCss from "@/index.css?url";
 
 export const Route = createRootRoute({
@@ -70,7 +69,6 @@ function RootDocument({ children }) {
       </head>
       <body data-react-root="true">
         {children}
-        <Base44Scripts />
         <Scripts />
       </body>
     </html>

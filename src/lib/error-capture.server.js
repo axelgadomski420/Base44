@@ -1,7 +1,10 @@
-// Base44 managed file: error-capture v1. Keep it as it is; Base44 replaces it with newer versions.
-// It reports the app's server errors to Base44, so the app's owner sees them as alerts.
+// PURRE PETS — error-capture v1, przeniesiony na Node.js (poprzednia wersja targetowała Cloudflare Workers).
+// Raportuje błędy serwera aplikacji (telemetria/logowanie), nie zmieniając odpowiedzi dla odwiedzającego.
+// Jedyna zmiana względem oryginału: import "cloudflare:workers" zastąpiono odpowiednikami Node.js:
+//   - `env` (bindings Workera) → migawka process.env (tylko do redakcji sekretów w logach),
+//   - `waitUntil` (przedłużenie życia żądania) → fire-and-forget promise (Node utrzymuje proces;
+//     pilnujemy tylko, by odrzucone promise'y nie przewracały procesu).
 import { getRequest, getResponseStatus } from "@tanstack/react-start/server";
-import { env, waitUntil } from "cloudflare:workers";
 
 // Base44 sends it only on production requests of apps whose owner turned error reporting on.
 const FEED_CONTEXT_HEADER = "x-b44-feed-context";
@@ -12,6 +15,16 @@ const STACK_MAX_BYTES = 4 * 1024;
 const LOGGED_ERRORS_KEPT = 8;
 const BODY_MAX_BYTES = 2 * 1024;
 const BODY_WAIT_MS = 50;
+
+// --- Node.js replacements for the Cloudflare Worker runtime APIs ---
+const env = { ...process.env };
+const pendingUntil = new Set();
+function waitUntil(promise) {
+  const tracked = Promise.resolve(promise).catch(() => {});
+  pendingUntil.add(tracked);
+  tracked.finally(() => pendingUntil.delete(tracked));
+}
+// -------------------------------------------------------------------
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -43,7 +56,7 @@ function scrubber() {
   return (text) => secrets.reduce((scrubbed, secret) => scrubbed.replaceAll(secret, "[redacted]"), text.toWellFormed());
 }
 
-// One `_b44_error` record for Base44's error tail. A 4xx is the caller's, and an error without a message says
+// One `_b44_error` record for the error tail. A 4xx is the caller's, and an error without a message says
 // nothing: neither is recorded.
 function write(request, error, { status, fn, route }) {
   if (status < 500 || !request.headers.has(FEED_CONTEXT_HEADER) || request.signal.aborted) return;
