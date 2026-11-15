@@ -188,7 +188,9 @@ if [ "${DEPLOY_NGINX:-0}" = "1" ]; then
     problems="${problems}server_name purrepets.pl w kilku aktywnych vhostach (powyżej) — usuń duplikaty ręcznie (z backupem); "
   fi
   # UPLOAD_DIR: bez domyślnych założeń — musi wynikać wprost z backend/.env.
-  up_dir="$(grep -E '^UPLOAD_DIR=' "$BACKEND/.env" | head -1 | cut -d= -f2- | tr -d '\"' | tr -d \"'" || true)"
+  raw_up="$(grep -E '^UPLOAD_DIR=' "$BACKEND/.env" | head -1 | cut -d= -f2- || true)"
+  up_dir="$(printf '%s' "$raw_up" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"//' -e 's/"$//')"
+  up_dir="$(printf '%s' "$up_dir" | sed -e "s/^'//" -e "s/'$//")"
   if [ -z "$up_dir" ]; then
     die "UPLOAD_DIR nie jest ustawiony w backend/.env — nie da się jednoznacznie potwierdzić ścieżki uploadów. Ustaw go jawnie i powtórz (nic nie zmieniono)."
   fi
