@@ -4,10 +4,25 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["node_modules", "dist", ".wrangler", ".tanstack", "src/routeTree.gen.ts", "src/components/ui/**"],
+    // Build outputs, logi i pliki generowane — nigdy nie lintowane.
+    ignores: [
+      "node_modules/**",
+      "dist/**",
+      ".output/**",
+      "backend/.output/**",
+      "backend/node_modules/**",
+      "backend/logs/**",
+      "logs/**",
+      "coverage/**",
+      ".wrangler/**",
+      ".tanstack/**",
+      "src/routeTree.gen.*",
+      "src/components/ui/**",
+    ],
   },
   pluginJs.configs.recommended,
   {
+    // JS + JSX (aplikacja, konfiguracje .js)
     files: ["**/*.{js,jsx}"],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
@@ -16,6 +31,28 @@ export default [
     plugins: { "react-hooks": pluginReactHooks },
     rules: {
       "react-hooks/rules-of-hooks": "error",
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    // ESM (.mjs) — smoke-test i skrypty narzędziowe.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+      parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+    },
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
+    // CommonJS (.cjs) — ecosystem.config.cjs (PM2).
+    files: ["**/*.cjs"],
+    languageOptions: {
+      globals: { ...globals.node },
+      parserOptions: { ecmaVersion: "latest", sourceType: "commonjs" },
+    },
+    rules: {
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
