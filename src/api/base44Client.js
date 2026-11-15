@@ -347,7 +347,7 @@ export const typingApi = {
 };
 
 // URL gniazda realtime (Socket.IO) — używane przez ChatWindow.
-export const socketUrl = API_URL || window.location.origin;
+export const socketUrl = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
 
 export const base44 = {
   auth,
