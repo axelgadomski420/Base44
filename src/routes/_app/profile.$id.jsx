@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
-import { BadgeCheck, MapPin, MessageCircle } from "lucide-react";
+import { BadgeCheck, Crown, Globe, Instagram, MapPin, MessageCircle, Music2 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { Image } from "@/components/ui/image";
 import { base44 } from "@/api/base44Client";
@@ -97,6 +97,13 @@ function PublicProfilePage() {
   if (loading) return <div className="p-6 text-sm text-muted-foreground">{t("common.loading")}</div>;
   if (!profile) return <div className="p-6 text-sm text-muted-foreground">{t("common.empty")}</div>;
 
+  const socials = [
+    { url: profile.website_url, label: "Strona", Icon: Globe },
+    { url: profile.instagram_url, label: "Instagram", Icon: Instagram },
+    { url: profile.tiktok_url, label: "TikTok", Icon: Music2 },
+  ].filter((s) => s.url);
+  const gallery = (profile.gallery_urls ?? []).slice(0, 12);
+
   return (
     <div>
       <TopBar />
@@ -160,6 +167,28 @@ function PublicProfilePage() {
           <p className="mt-4 whitespace-pre-line text-[13px] leading-relaxed text-foreground/85">{profile.bio}</p>
         )}
 
+        {/* Socials + konto PRO */}
+        {(socials.length > 0 || profile.verified) && (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {socials.map(({ url, label, Icon }) => (
+              <a
+                key={label}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="flex items-center gap-1.5 rounded-full border border-border/70 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground transition hover:border-aura/60 hover:text-aura"
+              >
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </a>
+            ))}
+            {profile.verified && (
+              <span className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet/20 to-aura/20 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-aura">
+                <Crown className="h-3.5 w-3.5" /> Konto PRO
+              </span>
+            )}
+          </div>
+        )}
+
         {profile.breeds?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {profile.breeds.map((breed) => (
@@ -171,6 +200,19 @@ function PublicProfilePage() {
               </span>
             ))}
           </div>
+        )}
+
+        {gallery.length > 0 && (
+          <section className="mt-6">
+            <h2 className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">Galeria</h2>
+            <div className="mt-3 grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+              {gallery.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl border border-border/70">
+                  <Image src={url} alt={`${profile.display_name} — zdjęcie ${i + 1}`} className="aspect-square w-full object-cover transition hover:scale-105" />
+                </a>
+              ))}
+            </div>
+          </section>
         )}
 
         <section className="mt-6">
