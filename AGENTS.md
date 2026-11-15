@@ -1,5 +1,22 @@
 # AGENTS.md
 
+> ## ⚠️ Self-hosted Node.js build (2026-11) — nadpisuje notki Base44/Cloudflare poniżej
+>
+> Ten repozytorium buduje się teraz na **Node.js 22 + Nitro** (bez Cloudflare/Wrangler, bez platformy Base44):
+>
+> - `vite.config.js`: `tanstackStart()` + `nitro()` + `react()`. NIE dodawaj ponownie `@cloudflare/vite-plugin`, `@base44/vite-plugin` ani `wrangler.jsonc`.
+> - Wynik buildu: `.output/` (`node .output/server/index.mjs`), nie `dist/`.
+> - `src/server.js` to custom server entry (raportowanie błędów tras); `src/lib/error-capture.server.js` używa odpowiedników Node.js (`process.env`, fire-and-forget `waitUntil`) — żadnych importów `cloudflare:`.
+> - `__root.jsx` nie renderuje już `Base44Scripts` (moduł wirtualny `base44:document` nie istnieje).
+> - Dane/auth/AI idą przez self-hosted backend (`backend/`: Express + Prisma + PostgreSQL + Socket.IO) przez `src/api/base44Client.js`. `context.getBase44()` w `src/lib/auth-middleware.js` jest reliktem — nie używaj go w nowym kodzie serwerowym.
+> - Sekrety tylko ze środowiska (`backend/.env`, nigdy w repo). Szczegóły: `docs/NODE-MIGRATION.md`.
+>
+> Punkty poniżej, które mówią o Cloudflare (`wrangler.jsonc`, `dist/client`, workerd, `base44 secrets set`, `base44:runtime`), są nieaktualne.
+
+---
+
+# AGENTS.md
+
 ## Project Context
 
 This is a Base44 app repository built with **TanStack Start** (React 19, plain JavaScript — no TypeScript): file-based routes, server functions and server routes, server-side rendering by default. Treat it as user-owned application code, keep changes focused on the user's request, and preserve the conventions below.
