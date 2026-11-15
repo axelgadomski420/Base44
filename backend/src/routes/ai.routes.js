@@ -36,6 +36,65 @@ Odpowiadasz ZAWSZE po polsku, zwięźle i konkretnie. Pomagasz w tematach: hodow
   res.json({ response: result.text, answer: result.text, model: config.ollamaModel });
 });
 
+// POST /api/ai/check-document — AI sprawdza dokument (umowa, rodowód, zaświadczenie).
+// Wejście: { text, filename?, kind? } — treść dokumentu (wklejona lub .txt).
+// Wyjście: { risk_score, risk_level, findings[], summary, checklist[], llm_ok }
+const docSchema = z.object({
+  text: z.string().min(20).max(12000),
+  filename: z.string().max(200).optional(),
+  kind: z.enum(["contract", "pedigree", "certificate", "other"]).default("other"),
+});
+
+router.post("/check-document", requireAuth, asyncHandler(async (req, res) => {
+  const parsed = docSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Podaj treść dokumentu (min. 20 znaków)" });
+  }
+  const { text, filename, kind } = parsed.data;
+
+  const kindLabel = { contract: "umowa sprzedaży/przekazania zwierzaka", pedigree: "rodowód", certificate: "zaświadczenie/certyfikat", other: "dokument" }[kind];
+
+  const prompt = `Przeanalizuj poniższy dokument (${kindLabel}) z polskiej hodowli zwierząt pod kątem bezpieczeństwa i kompletności.
+Wskaż: braki, podejrzane zapisy, klauzule niekorzystne dla kupującego, dane które powinny być uzupełnione.
+
+${filename ? `Nazwa pliku: ${filename}\n`}Dokument:
+"""${text.slice(0, 8000)}"""
+
+Odpowiedz WYŁĄCZNIE w formacie JSON:
+{"risk_score": <0-100>, "risk_level": "<low|medium|high>", "findings": ["<konkretne spostrzeżenie 1>", "<...>"], "summary": "<2-3 zdania po polsku>", "checklist": ["<czego brakuje / co doprecyzować>"]}`;
+
+  const result = await ollamaGenerate(prompt, { timeoutMs: 90000 });
+  let parsedJson = null;
+  if (result.ok) {
+    const match = result.text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { parsedJson = JSON.parse(match[0]); } catch { parsedJson = null; }
+    }
+  }
+
+  if (!parsedJson) {
+    return res.json({
+      risk_score: null,
+      risk_level: null,
+      findings: [],
+      summary: result.ok
+        ? result.text.slice(0, 1500)
+        : "Model AI jest chwilowo niedostępny — spróbuj ponownie za chwilę.",
+      checklist: [],
+      llm_ok: result.ok,
+    });
+  }
+
+  res.json({
+    risk_score: typeof parsedJson.risk_score === "number" ? Math.max(0, Math.min(100, parsedJson.risk_score)) : null,
+    risk_level: ["low", "medium", "high"].includes(parsedJson.risk_level) ? parsedJson.risk_level : null,
+    findings: Array.isArray(parsedJson.findings) ? parsedJson.findings.slice(0, 10).map(String) : [],
+    summary: String(parsedJson.summary ?? "").slice(0, 1500),
+    checklist: Array.isArray(parsedJson.checklist) ? parsedJson.checklist.slice(0, 10).map(String) : [],
+    llm_ok: true,
+  });
+}));
+
 // POST /api/ai/verify-breeder — automatyczna analiza wniosku hodowcy przez LLM.
 router.post("/verify-breeder", requireAuth, isModerator, asyncHandler(async (req, res) => {
   const id = String(req.body?.id ?? "").trim();

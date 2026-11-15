@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { Music2, Pause, Play, Search, Volume2 } from "lucide-react";
+import { Globe, Music2, Pause, Play, Search, Volume2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { FREE_SFX, FREE_TRACKS, playBeep } from "@/lib/sounds";
 import { cn } from "@/lib/utils";
 
 /**
- * Wyszukiwarka muzyki i audio do rolek: biblioteka backendu (/api/reels-audio)
- * + lokalne darmowe sample, z podglądem odsłuchu przed dodaniem.
+ * SoundPicker — wyszukiwarka muzyki i audio do rolek i relacji:
+ *  • Muzyka — biblioteka PURRE (/api/reels-audio) + darmowe sample (Mixkit),
+ *  • Globalna — iTunes Search API przez backend (/api/music/search): legalne
+ *    30-sekundowe podglądy największych przebojów, bez kluczy API,
+ *  • SFX — lokalne efekty.
  */
 export default function SoundPicker({ value, onChange, className }) {
   const audioRef = useRef(null);
@@ -14,8 +17,10 @@ export default function SoundPicker({ value, onChange, className }) {
   const [tab, setTab] = useState("music");
   const [query, setQuery] = useState("");
   const [remote, setRemote] = useState([]);
+  const [itunes, setItunes] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Biblioteka PURRE
   useEffect(() => {
     if (tab !== "music") return;
     let alive = true;
@@ -31,6 +36,28 @@ export default function SoundPicker({ value, onChange, className }) {
         })
         .finally(() => alive && setLoading(false));
     }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [query, tab]);
+
+  // iTunes (globalne przeboje)
+  useEffect(() => {
+    if (tab !== "global") return;
+    let alive = true;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      fetch(`/api/music/search?limit=20&q=${encodeURIComponent(query.trim() || "pop hits")}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (alive) setItunes(data?.items ?? []);
+        })
+        .catch(() => {
+          if (alive) setItunes([]);
+        })
+        .finally(() => alive && setLoading(false));
+    }, 300);
     return () => {
       alive = false;
       clearTimeout(timer);
@@ -68,12 +95,12 @@ export default function SoundPicker({ value, onChange, className }) {
 
   const pick = (track) => {
     onChange?.(track);
-    if (track.id && !track.id.startsWith("local-")) {
+    if (track.id && !track.id.startsWith("local-") && !track.id.startsWith("itunes-")) {
       base44.reelsAudio.use(track.id).catch(() => null);
     }
   };
 
-  const Row = ({ track, source }) => {
+  const Row = ({ track, source, artwork }) => {
     const selected = value?.id === track.id;
     const isPlaying = playingId === track.id;
     return (
@@ -83,14 +110,22 @@ export default function SoundPicker({ value, onChange, className }) {
           selected ? "bg-aura/15 ring-1 ring-aura/40" : "hover:bg-secondary/40"
         )}
       >
-        <button type="button" className="grid h-8 w-8 place-items-center rounded-full border border-border/60" onClick={() => preview(track)}>
-          {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-        </button>
+        {artwork ? (
+          <img src={artwork} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
+        ) : (
+          <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-border/60" onClick={() => preview(track)}>
+            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          </button>
+        )}
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => pick(track)}>
           <p className="truncate font-medium">{track.title}</p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="truncate text-[10px] text-muted-foreground">
+            {track.artist ? `${track.artist} · ` : ""}
             {track.mood || "sfx"} {track.duration ? `· ${track.duration}s` : ""} · {source}
           </p>
+        </button>
+        <button type="button" className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-foreground" onClick={() => preview(track)}>
+          {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3 w-3" />}
         </button>
         {selected && <Volume2 className="h-3.5 w-3.5 shrink-0 text-aura" />}
       </li>
@@ -106,6 +141,7 @@ export default function SoundPicker({ value, onChange, className }) {
       <div className="mt-2 flex gap-2">
         {[
           { id: "music", label: "Muzyka" },
+          { id: "global", label: "Globalna" },
           { id: "sfx", label: "SFX" },
         ].map((t) => (
           <button
@@ -113,22 +149,23 @@ export default function SoundPicker({ value, onChange, className }) {
             type="button"
             onClick={() => setTab(t.id)}
             className={cn(
-              "rounded-full px-3 py-1 text-[10px] uppercase tracking-wider",
+              "flex items-center gap-1 rounded-full px-3 py-1 text-[10px] uppercase tracking-wider",
               tab === t.id ? "bg-foreground text-background" : "border border-border/70"
             )}
           >
+            {t.id === "global" && <Globe className="h-3 w-3" />}
             {t.label}
           </button>
         ))}
       </div>
 
-      {tab === "music" && (
+      {tab !== "sfx" && (
         <div className="relative mt-2">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Szukaj muzyki… (tytuł, nastrój)"
+            placeholder={tab === "global" ? "Szukaj przebojów (iTunes)…" : "Szukaj muzyki… (tytuł, nastrój)"}
             className="h-9 w-full rounded-xl border border-border/60 bg-background/50 pl-9 pr-3 text-xs outline-none"
           />
         </div>
@@ -141,6 +178,17 @@ export default function SoundPicker({ value, onChange, className }) {
           ))}
           {localFiltered.length === 0 && (
             <li className="py-3 text-center text-xs text-muted-foreground">Brak wyników.</li>
+          )}
+        </ul>
+      ) : tab === "global" ? (
+        <ul className="mt-3 max-h-48 space-y-1.5 overflow-y-auto">
+          {itunes.map((track) => (
+            <Row key={track.id} track={track} source="iTunes · 30s podgląd" artwork={track.artwork} />
+          ))}
+          {itunes.length === 0 && (
+            <li className="py-3 text-center text-xs text-muted-foreground">
+              {loading ? "Szukam…" : "Brak wyników — spróbuj innej frazy."}
+            </li>
           )}
         </ul>
       ) : (
@@ -159,7 +207,7 @@ export default function SoundPicker({ value, onChange, className }) {
         </ul>
       )}
       <p className="mt-2 text-[9px] text-muted-foreground">
-        Darmowe sample (Mixkit) + biblioteka PURRE. Podgląd przed dodaniem do rolki.
+        Mixkit + biblioteka PURRE + iTunes (30 s podglądów). Wybierz ścieżkę do rolki lub relacji.
       </p>
     </div>
   );
