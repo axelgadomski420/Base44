@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { MessageCircle, Plus } from "lucide-react";
+import { MessageCircle, Plus, Search } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import NewChatDialog from "@/components/messaging/NewChatDialog";
 import { base44 } from "@/api/base44Client";
@@ -20,6 +20,7 @@ function MessagesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!user?.id) return;
@@ -35,6 +36,19 @@ function MessagesPage() {
       active = false;
     };
   }, [user?.id]);
+
+  // H: lokalny filtr listy rozmów (nazwa, ogłoszenie, ostatnia wiadomość).
+  const needle = query.trim().toLowerCase();
+  const visible = needle
+    ? items.filter((conversation) => {
+        const names = (conversation.member_names ?? []).join(" ").toLowerCase();
+        return (
+          names.includes(needle) ||
+          (conversation.listing_title ?? "").toLowerCase().includes(needle) ||
+          (conversation.last_message ?? "").toLowerCase().includes(needle)
+        );
+      })
+    : items;
 
   return (
     <div>
@@ -58,20 +72,34 @@ function MessagesPage() {
 
         <NewChatDialog open={composerOpen} onClose={() => setComposerOpen(false)} />
 
+        {items.length > 0 && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Szukaj w rozmowach…"
+              className="h-8 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
+            />
+          </div>
+        )}
+
         {loading ? (
           <div className="mt-6 space-y-3">
             {Array.from({ length: 4 }).map((_, index) => (
               <div key={index} className="h-16 animate-pulse rounded-2xl bg-secondary/40" />
             ))}
           </div>
-        ) : items.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="mt-10 rounded-[var(--radius)] border border-dashed border-border/70 p-10 text-center">
             <MessageCircle className="mx-auto h-6 w-6 text-muted-foreground" />
-            <p className="mt-3 text-sm text-muted-foreground">{t("messages.noThreads")}</p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {needle ? "Brak rozmów pasujących do frazy." : t("messages.noThreads")}
+            </p>
           </div>
         ) : (
           <ul className="mt-6 space-y-2">
-            {items.map((conversation) => {
+            {visible.map((conversation) => {
               const otherIndex = (conversation.members ?? []).findIndex((member) => member !== user.id);
               const otherName =
                 conversation.member_names?.[otherIndex === -1 ? 0 : otherIndex] || "Rozmowa";
