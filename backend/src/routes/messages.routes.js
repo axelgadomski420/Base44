@@ -56,28 +56,33 @@ function previewOf(data) {
 }
 
 // GET /api/messages/conversations?q=
+// H: wyszukiwanie case-insensitive po częściowej frazie (nazwa, ogłoszenie, ostatnia wiadomość).
+// Prisma nie wspiera "mode: insensitive" dla filtrów tablic string — filtrujemy w pamięci.
 messagesRouter.get(
   "/conversations",
   asyncHandler(async (req, res) => {
     const q = (typeof req.query.q === "string" ? req.query.q : "").trim();
     const conversations = await prisma.conversation.findMany({
-      where: {
-        members: { has: req.user.id },
-        ...(q ? { OR: [
-          { member_names: { has: q } },
-          { listing_title: { contains: q, mode: "insensitive" } },
-          { last_message: { contains: q, mode: "insensitive" } },
-        ] } : {}),
-      },
+      where: { members: { has: req.user.id } },
       orderBy: { last_message_at: "desc" },
-      take: 60,
+      take: 200,
     });
-    res.json({ items: conversations });
+    let items = conversations;
+    if (q) {
+      const needle = q.toLowerCase();
+      items = conversations.filter((c) =>
+        (c.member_names ?? []).some((n) => (n ?? "").toLowerCase().includes(needle)) ||
+        (c.listing_title ?? "").toLowerCase().includes(needle) ||
+        (c.last_message ?? "").toLowerCase().includes(needle)
+      );
+    }
+    res.json({ items: items.slice(0, 60) });
   })
 );
 
-// GET /api/messages/conversations/:id/messages?before=<ISO>&limit=50
+// GET /api/messages/conversations/:id/messages?before=<ISO>&limit=50&q=
 // Infinite scroll: podaj "before" (created_date najstarszej wczytanej wiadomości).
+// H: q — wyszukiwanie w historii (tylko wiadomości nieszyfrowane; e2e filtruje klient po odszyfrowaniu).
 messagesRouter.get(
   "/conversations/:id/messages",
   asyncHandler(async (req, res) => {
@@ -85,18 +90,20 @@ messagesRouter.get(
     if (!conv) throw notFound("Nie znaleziono rozmowy");
     if (!conv.members.includes(req.user.id)) throw forbidden("Brak dostępu");
     const limit = Math.max(1, Math.min(100, Number(req.query.limit ?? 50)));
+    const q = (typeof req.query.q === "string" ? req.query.q : "").trim();
     const before = typeof req.query.before === "string" && req.query.before ? new Date(req.query.before) : null;
     const messages = await prisma.message.findMany({
       where: {
         conversation_id: conv.id,
         deleted: false,
+        ...(q ? { e2e: false, content: { contains: q, mode: "insensitive" } } : {}),
         ...(before && !Number.isNaN(before.getTime()) ? { created_date: { lt: before } } : {}),
       },
       orderBy: { created_date: "desc" },
       take: limit,
     });
     const ordered = messages.reverse();
-    if (!before) {
+    if (!before && !q) {
       await prisma.message.updateMany({
         where: { conversation_id: conv.id, seen: false, NOT: { sender_id: req.user.id } },
         data: { seen: true, read_at: new Date() },
