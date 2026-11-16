@@ -88,11 +88,12 @@ Backend (`backend/.env`): `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `PORT`
 
     cd /home/ubuntu/Base44
     git fetch origin
-    git checkout feature/node-nitro-migration
+    git checkout fix/production-node-deployment
     # zapisz lokalne zmiany, jeśli są (git status; commit/stash)
     cp backend/.env.example backend/.env && nano backend/.env   # wartości po rotacji
-    npm install          # aktualizuje package-lock.json po zmianie zależności
-    bash scripts/deploy.sh
+    # UWAGA: npm install na produkcji jest ZABRONIONY — package-lock.json regeneruje
+    #        CI (job "lockfile", Node 22) i commituje go do gałęzi.
+    bash scripts/deploy.sh   # wyłącznie npm ci; przerywa, gdy lockfile poza syncem
     npm test
     bash scripts/triple-check.sh
 
@@ -127,3 +128,77 @@ Nginx (jednorazowo, po backupie istniejących plików):
   usunąć `useServerFn` i wołać funkcje wprost.
 - `scripts/server-static.js` / `server-static.cjs` stają się zbędne — nie są już używane przez PM2;
   zostawione jako backup.
+
+## 9. Poprawki wdrożeniowe (gałąź fix/production-node-deployment)
+
+Weryfikacja techniczna migracji (npm registry / jsDelivr / dokumentacja TanStack, 2026-11-15)
+potwierdziła architekturę i naprawiła następujące problemy:
+
+1. **Konflikt peer dependencies @tanstack/ai** — lockfile rozjechał się: `@tanstack/ai-openai@0.22.8`
+   wymaga `@tanstack/ai ^0.55.0`, a w projekcie jest `@tanstack/ai 0.54.0` (oraz
+   `@tanstack/ai-react@0.24.1`, peer `^0.54.0`). Naprawa: `@tanstack/ai-openai` przypięty dokładnie
+   do **0.22.6** (peer `^0.54.0` — spójny zestaw; `openai-base@0.10.16` w lockfile spełnia
+   wymagane `^0.10.11`). Bez `--force`, bez `--legacy-peer-deps`.
+2. **Kolejność pluginów Vite** — uporządkowana jak w oficjalnym przykładzie TanStack Start
+   (examples/react/start-basic): `tanstackStart() → react() → nitro()`.
+3. **package-lock.json** — wymagał regeneracji (zawierał poddrzewo Cloudflare, brak wpisów nitro;
+   `npm ci` zwracał błąd synchronizacji). **Runda 2:** regenerację robi CI (job `lockfile`:
+   `npm install --package-lock-only` + weryfikacja `npm ci` + automatyczny commit), a `deploy.sh`
+   używa wyłącznie `npm ci` — `npm install` na produkcji jest zabroniony (szczegóły: sekcja 10).
+4. **smoke-test.mjs** — zaostrzony: brak odpowiedzi HTTP jest błędem (wyjątek: `SMOKE_ALLOW_OFFLINE=1`
+   przed startem PM2). Sprawdza: artefakty buildu, brak importu `cloudflare:` w zbudowanym serwerze,
+   SSR strony głównej, routing (`/login`), statyki (`/robots.txt`) i `/api/health`.
+5. **Inicjalizacja administratora** — bezpieczna, bez otwartego endpointu HTTP:
+       cd backend && node scripts/seed-admin.js
+   (`seed-admin.js` nadaje rolę admin tylko e-mailom z `ADMIN_EMAILS` i tworzy profil/portfel;
+   `make-admin.mjs` został utwardzony — odmawia działania dla adresu spoza `ADMIN_EMAILS`).
+   Role zmienia też panel admina (`PATCH /api/admin/users/:id`), dostępny wyłącznie dla
+   kont z `ADMIN_EMAILS`.
+6. **deploy.sh** — domyślnie wdraża aktualnie wybraną gałąź (`DEPLOY_BRANCH` ma priorytet);
+   przed przełączeniem PM2 uruchamia smoke-test artefaktów; po health checkach pełny smoke-test HTTP.
+
+Potwierdzone zgodności wersji:
+- `nitro@3.0.260903-beta` eksportuje `./vite` (plugin Vite) — używany w `vite.config.js`.
+- `@tanstack/react-start@1.168.60`: `server.entry` istnieje w schemacie konfiguracji
+  (start-plugin-core 1.171.49); `@tanstack/react-start/server` eksportuje `createStartHandler`
+  (przez start-server-core 1.169.39) i `defaultStreamHandler` — custom entry `src/server.js`
+  (format `{ fetch }`) jest zgodny z dokumentacją (guide/server-entry-point).
+- Custom server entry jest opcjonalny: gdyby build zgłosił problem z `server.entry`, można usunąć
+  tę opcję — wbudowany entry + middlewary (`src/start.js`) i tak łapią błędy.
+
+## 10. Runda 2 poprawek (fix/production-node-deployment)
+
+1. **package-lock.json** — regeneracja odbywa się w CI (job `lockfile`, Node 22):
+   `npm install --package-lock-only` (bez `--force`/`--legacy-peer-deps`), następnie weryfikacja
+   `npm ci` (frontend i backend) i automatyczny commit zaktualizowanego lockfile do gałęzi.
+   **Na serwerze produkcyjnym `npm install` jest zabroniony** — `deploy.sh` używa wyłącznie
+   `npm ci` i przerywa wdrożenie z jasnym komunikatem, gdy lockfile jest poza syncem.
+2. **deploy.sh** — zmiany:
+   - kontrola czystości repo wykrywa też pliki untracked (`git status --short`); skrypt nigdy
+     nie nadpisuje lokalnych zmian,
+   - pełny smoke-test HTTP po health checkach jest WARUNKIEM sukcesu — porażka jakiegokolwiek
+     testu (SSR `/`, routing `/login`, statyki `/robots.txt`, `/api/health`) uruchamia rollback,
+   - rozszerzony rollback: przywraca `.output` (z `.output.bak-*`), `ecosystem.config.cjs`
+     (z `.config.bak-*`), konfigurację Nginx (z `.bak`) i wznawia historyczny proces PM2;
+     nie usuwa bazy, uploadów, Dockera, wolumenów ani danych,
+   - migracja historycznego procesu PM2 (`purrepet`): deploy wykrywa procesy kolidujące
+     z portami 3000/4000, **zatrzymuje** je (nie usuwa) przed startem nowych, a po pełnym
+     sukcesie smoke-testów usuwa je selektywnie (`pm2 delete <nazwa>` — nigdy `pm2 delete all`).
+     Dzięki temu na porcie 3000 nigdy nie rywalizują dwa procesy frontendu,
+   - preflight Nginx (`DEPLOY_NGINX=1`): sprawdza istnienie plików certyfikatów
+     (`/etc/letsencrypt/live/purrepets.pl/`), duplikaty `server_name purrepets.pl` w aktywnych
+     vhostach oraz zgodność `UPLOAD_DIR` (backend/.env) z `alias` w `purrepets.conf`;
+     przy problemach przerywa z listą do ręcznej naprawy (nigdy nie usuwa plików operatora).
+3. **Skrypty admina** — usunięto domyślny adres e-mail (`effdoa@gmail.com`). Bez jawnie
+   ustawionego `ADMIN_EMAILS` (backend/.env) skrypty `seed-admin.js` i `make-admin.mjs`
+   PRZERYWAJĄ działanie. Nadanie roli admin wymaga jawnej decyzji operatora.
+4. **Nginx — weryfikacja** (backend/nginx/purrepets.conf): prefiks `/api/` zachowany
+   (`proxy_pass` bez ukośnika), `/socket.io/` z nagłówkami Upgrade/Connection,
+   `/uploads/` jako alias dysku z fallbackiem do API (Range/206), cache statyków `/assets/`.
+   Założenia o ścieżkach (certyfikaty, uploady) NIE są przyjmowane bez sprawdzenia —
+   weryfikuje je preflight w deploy.sh.
+5. **CI** (`.github/workflows/ci.yml`, Node 22): npm ci → `prisma migrate deploy` (wyłącznie
+   efemeryczna baza Postgres 16 w CI) → lint → build → smoke-test artefaktów → start frontendu
+   i backendu → pełny smoke-test HTTP → start przez PM2 + weryfikacja HTTP. Produkcja nietknięta.
+6. **Backend/Prisma** — bez zmian schematu, bez automatycznych migracji; deploy robi tylko
+   `prisma generate`. Migracje: ręcznie (`npx prisma migrate deploy`), po przeglądzie.

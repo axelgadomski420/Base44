@@ -1,6 +1,6 @@
-// Base44 managed file: error-capture v1. Keep it as it is, and keep it as `main` in wrangler.jsonc; Base44
-// replaces it with newer versions. The Worker's entry: TanStack Start's default one, which also reports a
-// page's loader and beforeLoad errors to Base44. What a visitor gets back is unchanged.
+// PURRE PETS — custom server entry TanStack Start: uniwersalny handler `{ fetch }` (Request → Response),
+// zgodny z dokumentacją (guide/server-entry-point) i z runtime Node.js/Nitro. Raportowanie błędów tras
+// (error-capture) działa jak poprzednio; dla odwiedzającego odpowiedź jest niezmieniona.
 import { createStartHandler, defaultStreamHandler } from "@tanstack/react-start/server";
 import { recordRouteError } from "@/lib/error-capture.server";
 

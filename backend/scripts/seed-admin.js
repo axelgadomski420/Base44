@@ -1,11 +1,20 @@
-// Nadaje rolę ADMIN kontu effdoa@gmail.com (i ewentualnym dodatkowym z ADMIN_EMAILS)
-// oraz tworzy brakujący profil i portfel.
-// Uruchomienie: node scripts/seed-admin.js
+// Nadaje rolę ADMIN kontom z listy ADMIN_EMAILS oraz tworzy brakujący profil i portfel.
+// BEZPIECZEŃSTWO: jeśli ADMIN_EMAILS nie jest jawnie ustawione (backend/.env lub środowisko),
+// skrypt PRZERYWA działanie — nigdy nie nadaje uprawnień administratora domyślnie.
+// Uruchomienie: cd backend && node scripts/seed-admin.js
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
+const adminEmailsRaw = process.env.ADMIN_EMAILS;
+if (!adminEmailsRaw || !adminEmailsRaw.trim()) {
+  console.error("[seed-admin] PRZERWANO: zmienna ADMIN_EMAILS nie jest ustawiona.");
+  console.error("[seed-admin] Ustaw ją jawnie w backend/.env, np.: ADMIN_EMAILS=twoj@email.com");
+  console.error("[seed-admin] Skrypt celowo nie ma domyślnego adresu — nadawanie roli admin wymaga decyzji operatora.");
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "effdoa@gmail.com")
+const ADMIN_EMAILS = adminEmailsRaw
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, Image as ImageIcon, Loader2, Lock, MoreVertical, Search, Send, Smile, Trash2 } from "lucide-react";
+import { Check, CheckCheck, Image as ImageIcon, Loader2, Lock, MoreVertical, Phone, Search, Send, Smile, Trash2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { io } from "socket.io-client";
 import { base44, messagesApi } from "@/api/base44Client";
 import { decryptFrom, encryptFor, ensureE2eKeys } from "@/lib/e2e";
 import { cn } from "@/lib/utils";
+import CallOverlay from "@/components/messaging/CallOverlay";
 
 const REACTIONS = ["❤️", "😂", "😮", "😢", "👍", "🔥"];
 const TOKEN_KEY = "purre_access_token";
@@ -21,7 +22,8 @@ const meOf = () => {
  *  • E2E (ECDH P-256 + AES-GCM) — serwer nie widzi treści,
  *  • realtime przez Socket.IO (message:new / typing / read / react / delete),
  *  • infinite scroll historii (?before=), statusy dostarczono/odczytano,
- *  • załączniki multimedialne, reakcje, usuwanie, wyszukiwarka.
+ *  • załączniki multimedialne, reakcje, usuwanie, wyszukiwarka,
+ *  • H: połączenia głosowe/wideo (WebRTC przez CallOverlay).
  */
 export default function ChatWindow({ conversationId, peer, onClose }) {
   const me = meOf();
@@ -35,6 +37,8 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
   const [e2eReady, setE2eReady] = useState(false);
   const [search, setSearch] = useState("");
   const [menuFor, setMenuFor] = useState(null);
+  const [callRequest, setCallRequest] = useState(null); // H: { kind, seq }
+  const [socketInstance, setSocketInstance] = useState(null);
   const endRef = useRef(null);
   const topRef = useRef(null);
   const fileRef = useRef(null);
@@ -105,6 +109,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
       transports: ["websocket", "polling"],
     });
     socketRef.current = socket;
+    setSocketInstance(socket);
     socket.emit("subscribe", { room: `conversation:${conversationId}` });
 
     socket.on("message:new", async (m) => {
@@ -211,6 +216,8 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
     ? messages.filter((m) => (m.plain || "").toLowerCase().includes(search.trim().toLowerCase()))
     : messages;
 
+  const startCall = (kind) => setCallRequest((prev) => ({ kind, seq: (prev?.seq ?? 0) + 1 }));
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
@@ -222,6 +229,25 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
             {typing.length > 0 && <span className="ml-1 text-aura">· {typing[0].name ?? "ktoś"} pisze…</span>}
           </p>
         </div>
+        {/* H: połączenia głosowe / wideo */}
+        <button
+          type="button"
+          onClick={() => startCall("audio")}
+          className="grid h-8 w-8 place-items-center rounded-xl border border-border/60 text-muted-foreground hover:text-foreground"
+          aria-label="Połączenie głosowe"
+          title="Połączenie głosowe"
+        >
+          <Phone className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => startCall("video")}
+          className="grid h-8 w-8 place-items-center rounded-xl border border-border/60 text-muted-foreground hover:text-foreground"
+          aria-label="Połączenie wideo"
+          title="Połączenie wideo"
+        >
+          <Video className="h-4 w-4" />
+        </button>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -328,6 +354,16 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
           <Send className="h-4 w-4" />
         </button>
       </div>
+
+      {/* H: WebRTC — połączenia głosowe/wideo */}
+      <CallOverlay
+        socket={socketInstance}
+        conversationId={conversationId}
+        peerId={peerId}
+        peerName={peer?.display_name || peer?.name}
+        peerAvatar={peer?.avatar_url}
+        request={callRequest}
+      />
     </div>
   );
 }

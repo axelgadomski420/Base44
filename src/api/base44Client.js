@@ -261,7 +261,8 @@ export const notificationsApi = {
 // Messenger (media, odczyty, reakcje, usuwanie)
 export const messagesApi = {
   conversations: (q) => request(`/api/messages/conversations${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-  messages: (conversationId) => request(`/api/messages/conversations/${conversationId}/messages`),
+  messages: (conversationId, q) =>
+    request(`/api/messages/conversations/${conversationId}/messages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   history: (conversationId, before, limit = 50) =>
     request(`/api/messages/conversations/${conversationId}/messages?before=${encodeURIComponent(before ?? "")}&limit=${limit}`),
   send: (body) => request("/api/messages/send", { method: "POST", body }),
@@ -313,6 +314,32 @@ export const adminApi = {
 export const billing = {
   packages: () => request("/api/stripe/packages"),
   checkout: (packageId) => request("/api/stripe/create-checkout", { method: "POST", body: { package_id: packageId } }),
+  // I: fallback księgowania po powrocie z Checkout (idempotentny, jak webhook)
+  confirm: (sessionId) => request(`/api/stripe/confirm?session_id=${encodeURIComponent(sessionId)}`),
+};
+
+// Konta zwierząt (moduł E) — dedykowane API z weryfikacją właściciela/opiekuna.
+export const petsApi = {
+  mine: () => request("/api/pets/mine"),
+  get: (id) => request(`/api/pets/${encodeURIComponent(id)}`),
+  update: (id, body) => request(`/api/pets/${encodeURIComponent(id)}`, { method: "PATCH", body }),
+  health: (id) => request(`/api/pets/${encodeURIComponent(id)}/health`),
+  addHealth: (id, body) => request(`/api/pets/${encodeURIComponent(id)}/health`, { method: "POST", body }),
+  removeHealth: (id, recordId) => request(`/api/pets/${encodeURIComponent(id)}/health/${encodeURIComponent(recordId)}`, { method: "DELETE" }),
+  calendar: (id) => request(`/api/pets/${encodeURIComponent(id)}/calendar`),
+  addEvent: (id, body) => request(`/api/pets/${encodeURIComponent(id)}/calendar`, { method: "POST", body }),
+  toggleEvent: (id, eventId, done) => request(`/api/pets/${encodeURIComponent(id)}/calendar/${encodeURIComponent(eventId)}`, { method: "PATCH", body: { done } }),
+  removeEvent: (id, eventId) => request(`/api/pets/${encodeURIComponent(id)}/calendar/${encodeURIComponent(eventId)}`, { method: "DELETE" }),
+  measurements: (id) => request(`/api/pets/${encodeURIComponent(id)}/measurements`),
+  addMeasurement: (id, body) => request(`/api/pets/${encodeURIComponent(id)}/measurements`, { method: "POST", body }),
+  removeMeasurement: (id, mid) => request(`/api/pets/${encodeURIComponent(id)}/measurements/${encodeURIComponent(mid)}`, { method: "DELETE" }),
+  achievements: (id) => request(`/api/pets/${encodeURIComponent(id)}/achievements`),
+  addAchievement: (id, body) => request(`/api/pets/${encodeURIComponent(id)}/achievements`, { method: "POST", body }),
+  removeAchievement: (id, aid) => request(`/api/pets/${encodeURIComponent(id)}/achievements/${encodeURIComponent(aid)}`, { method: "DELETE" }),
+  caregivers: (id) => request(`/api/pets/${encodeURIComponent(id)}/caregivers`),
+  addCaregiver: (id, body) => request(`/api/pets/${encodeURIComponent(id)}/caregivers`, { method: "POST", body }),
+  removeCaregiver: (id, userId) => request(`/api/pets/${encodeURIComponent(id)}/caregivers/${encodeURIComponent(userId)}`, { method: "DELETE" }),
+  upcomingReminders: () => request("/api/pets/reminders/upcoming"),
 };
 
 // ---------------------------------------------------------------- Public client
@@ -347,7 +374,22 @@ export const typingApi = {
 };
 
 // URL gniazda realtime (Socket.IO) — używane przez ChatWindow.
-export const socketUrl = API_URL || window.location.origin;
+export const socketUrl = API_URL || (typeof window !== "undefined" ? window.location.origin : "");
+
+// Otwiera plik wymagający autoryzacji (np. prywatny dokument weryfikacji) w nowej karcie.
+export async function openAuthorizedFile(url) {
+  if (typeof window === "undefined") return;
+  const target = /^https?:\/\//.test(url) ? url : `${API_URL}${url}`;
+  const headers = {};
+  const current = token();
+  if (current) headers.Authorization = `Bearer ${current}`;
+  const response = await fetch(target, { headers, credentials: "omit" });
+  if (!response.ok) throw new ApiError(response.status, null);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  window.open(objectUrl, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+}
 
 export const base44 = {
   auth,
@@ -363,6 +405,7 @@ export const base44 = {
   e2e: e2eApi,
   stories: storiesApi,
   profile: profileApi,
+  pets: petsApi,
   admin: adminApi,
   billing,
   entities,
@@ -372,6 +415,12 @@ export const base44 = {
         const formData = new FormData();
         formData.append("file", file);
         return request("/api/uploads", { method: "POST", formData });
+      },
+      async UploadPrivateFile({ file }) {
+        // Dokumenty prywatne (np. weryfikacja hodowcy) — NIGDY do publicznego /uploads.
+        const formData = new FormData();
+        formData.append("file", file);
+        return request("/api/uploads/private", { method: "POST", formData });
       },
     },
   },

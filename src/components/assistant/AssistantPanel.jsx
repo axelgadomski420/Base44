@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Send, Sparkles, X } from "lucide-react";
+import { Bot, PawPrint, Send, Sparkles, X } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { cn } from "@/lib/utils";
 
 const SUGGESTIONS = [
-  "Jak bezpiecznie kupić szczeniaka?",
-  "Jak dodać ogłoszenie?",
+  "Jak często szczepić szczeniaka?",
+  "Czym karmić sterylizowanego kota?",
+  "Pomóż mi napisać opis ogłoszenia",
+  "Checklista opieki nad miotem",
+  "Jak przygotować psa do wizyty u weterynarza?",
   "Do czego służą PURRE Coins?",
-  "Jak działa edytor wideo?",
 ];
 
 /**
@@ -16,19 +18,28 @@ const SUGGESTIONS = [
  * Fallback: stary endpoint /api/assistant/ask (tryb reguł).
  */
 export default function AssistantPanel() {
-  const { isAuthenticated, navigateToLogin } = useAuth();
+  const { isAuthenticated, user, navigateToLogin } = useAuth();
   const [open, setOpen] = useState(false);
+  const [pets, setPets] = useState([]);
+  const [petId, setPetId] = useState("");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "Cześć — jestem PURRE Assistant. Zapytaj o hodowlę, bezpieczeństwo, coiny lub edytor wideo.",
+      text: "Cześć — jestem PURRE Assistant. Zapytaj o opiekę, żywienie, zachowanie, hodowlę, ogłoszenia lub obsługę aplikacji. Możesz wybrać swojego zwierzaka jako kontekst rozmowy.",
       source: "rules",
     },
   ]);
   const [health, setHealth] = useState(null);
   const endRef = useRef(null);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    base44.entities.Pet.filter({ owner_id: user.id }, { limit: 20 })
+      .then((page) => setPets(page.items ?? []))
+      .catch(() => setPets([]));
+  }, [open, user]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +71,12 @@ export default function AssistantPanel() {
     setBusy(true);
     try {
       // Główna ścieżka: lokalny LLM (Ollama) przez /api/ai/chat.
-      const result = await base44.functions.aiChat({ message: q, prompt: q, history });
+      const result = await base44.functions.aiChat({
+        message: q,
+        prompt: q,
+        history,
+        ...(petId ? { pet_id: petId } : {}),
+      });
       const answer = result?.response || result?.answer || "…";
       setMessages((m) => [...m, { role: "assistant", text: answer, source: "ollama" }]);
     } catch (err) {
@@ -130,6 +146,27 @@ export default function AssistantPanel() {
             )}
             <div ref={endRef} />
           </div>
+
+          {pets.length > 0 && (
+            <div className="border-t border-border/40 px-3 py-2">
+              <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <PawPrint className="h-3.5 w-3.5 text-aura" />
+                <span className="shrink-0">Kontekst zwierzaka:</span>
+                <select
+                  value={petId}
+                  onChange={(e) => setPetId(e.target.value)}
+                  className="h-7 min-w-0 flex-1 rounded-lg border border-border/60 bg-background/50 px-1.5 text-[11px] outline-none"
+                >
+                  <option value="" className="bg-popover">Brak (rozmowa ogólna)</option>
+                  {pets.map((p) => (
+                    <option key={p.id} value={p.id} className="bg-popover">
+                      {p.name}{p.breed ? ` (${p.breed})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
           <div className="no-scrollbar flex gap-1 overflow-x-auto border-t border-border/40 px-2 py-2">
             {SUGGESTIONS.map((s) => (

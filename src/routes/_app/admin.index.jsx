@@ -138,9 +138,13 @@ function AdminPage() {
                   </p>
                   {item.note && <p className="mt-2 text-sm">{item.note}</p>}
                   {item.document_url && (
-                    <a href={item.document_url} className="mt-2 inline-block text-[11px] text-aura" target="_blank" rel="noreferrer">
+                    <button
+                      type="button"
+                      onClick={() => base44.openAuthorizedFile(item.document_url).catch((err) => toast.error(err?.message ?? "Nie udało się otworzyć dokumentu"))}
+                      className="mt-2 inline-block text-[11px] text-aura underline-offset-2 hover:underline"
+                    >
                       Dokument
-                    </a>
+                    </button>
                   )}
                   <div className="mt-3 flex gap-2">
                     <button

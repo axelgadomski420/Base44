@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
 import react from "@vitejs/plugin-react";
@@ -8,6 +9,11 @@ import { defineConfig } from "vite";
 // Adapter Cloudflare (@cloudflare/vite-plugin + wrangler.jsonc) został usunięty — patrz docs/NODE-MIGRATION.md.
 // Wynik buildu: .output/ (serwer: .output/server/index.mjs, statyki: .output/public).
 //
+// Kolejność pluginów jak w oficjalnym przykładzie TanStack Start (examples/react/start-basic):
+// tanstackStart() → react() → nitro() — Nitro pakuje finalny output na końcu.
+//
+// Alias "@" → ./src — KRYTYCZNE: Vite (Rolldown) NIE czyta paths z jsconfig.json. Bez tego
+// każdy import "@/components/..." kończy się błędem resolve (np. DefaultCatchBoundary).
 // Every runtime dependency is bundled at startup, for the browser and the SSR server: one first imported
 // mid-session makes Vite re-bundle, and a page rendered meanwhile on the server loads a second React.
 // Not listed: React itself, the TanStack Start/Router framework (its plugin bundles it) and build-time plugins.
@@ -16,6 +22,11 @@ const { dependencies } = JSON.parse(readFileSync(new URL("./package.json", impor
 const PREBUNDLE = Object.keys(dependencies).filter((name) => !NOT_PREBUNDLED.has(name));
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   server: {
     allowedHosts: ["purrepets.pl", "www.purrepets.pl", "92.5.154.243"],
   },
@@ -28,7 +39,7 @@ export default defineConfig({
   plugins: [
     // Custom server entry (src/server.js) zachowuje raportowanie błędów tras (error-capture) na Node.js.
     tanstackStart({ srcDirectory: "src", server: { entry: "./server.js" } }),
-    nitro(),
     react(),
+    nitro(),
   ],
 });
