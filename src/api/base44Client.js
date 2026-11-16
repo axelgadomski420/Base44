@@ -261,7 +261,8 @@ export const notificationsApi = {
 // Messenger (media, odczyty, reakcje, usuwanie)
 export const messagesApi = {
   conversations: (q) => request(`/api/messages/conversations${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-  messages: (conversationId) => request(`/api/messages/conversations/${conversationId}/messages`),
+  messages: (conversationId, q) =>
+    request(`/api/messages/conversations/${conversationId}/messages${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   history: (conversationId, before, limit = 50) =>
     request(`/api/messages/conversations/${conversationId}/messages?before=${encodeURIComponent(before ?? "")}&limit=${limit}`),
   send: (body) => request("/api/messages/send", { method: "POST", body }),
@@ -313,6 +314,8 @@ export const adminApi = {
 export const billing = {
   packages: () => request("/api/stripe/packages"),
   checkout: (packageId) => request("/api/stripe/create-checkout", { method: "POST", body: { package_id: packageId } }),
+  // I: fallback księgowania po powrocie z Checkout (idempotentny, jak webhook)
+  confirm: (sessionId) => request(`/api/stripe/confirm?session_id=${encodeURIComponent(sessionId)}`),
 };
 
 // Konta zwierząt (moduł E) — dedykowane API z weryfikacją właściciela/opiekuna.
