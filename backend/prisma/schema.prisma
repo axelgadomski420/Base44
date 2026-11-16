@@ -552,7 +552,7 @@ model PetHealthRecord {
   title          String
   date           DateTime?
   next_date      DateTime? // kolejna dawka / termin przypomnienia
-  details        String?   // dawkowanie/zaledcenia — WYŁĄCZNIE wpis użytkownika wg zaleceń weterynarza
+  details        String?   // dawkowanie/zalecenia — WYŁĄCZNIE wpis użytkownika wg zaleceń weterynarza
   vet_name       String?
   attachment_url String?
   created_by_id  String?
@@ -635,4 +635,21 @@ model PetCaregiver {
   @@unique([pet_id, user_id])
   @@index([user_id])
   @@map("pet_caregivers")
+}
+
+// ============================================================
+// MODUŁ I — STRIPE: idempotencja webhooka
+// Rejestr przetworzonych event_id — Stripe dostarcza eventy
+// co najmniej raz; bez rejestru ponowny delivery mógłby ponownie
+// uruchomić księgowanie monet / aktywację PRO.
+// ============================================================
+
+model StripeWebhookEvent {
+  id           String   @id @default(cuid())
+  event_id     String   @unique
+  type         String
+  created_date DateTime @default(now())
+
+  @@index([created_date])
+  @@map("stripe_webhook_events")
 }
