@@ -20,6 +20,7 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
   const [remoteLive, setRemoteLive] = useState(false);
 
   const pcRef = useRef(null);
+  const kindRef = useRef(null); // stabilny rodzaj połączenia dla handlerów socketu
   const localStreamRef = useRef(null);
   const otherIdRef = useRef(null);
   const pendingIceRef = useRef([]);
@@ -47,6 +48,7 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
     stopMedia();
     pendingIceRef.current = [];
     otherIdRef.current = null;
+    kindRef.current = null;
     clearTimers();
     setMuted(false);
     setCamOff(false);
@@ -63,10 +65,11 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
   };
 
   const finish = (kind, note) => {
+    const effectiveKind = kind ?? kindRef.current;
     const ms = startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     const wasActive = ms > 0;
     teardown();
-    if (wasActive) logCall(kind, ms);
+    if (wasActive && effectiveKind) logCall(effectiveKind, ms);
     if (note) toast.info(note);
   };
 
@@ -114,6 +117,7 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
       const pc = buildPc();
       pcRef.current = pc;
       otherIdRef.current = peerId;
+      kindRef.current = kind;
       for (const track of stream.getTracks()) pc.addTrack(track, stream);
       setCall({ role: "caller", kind, status: "ringing" });
       const offer = await pc.createOffer();
@@ -159,7 +163,7 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
     const current = call;
     socket?.emit("call:end", { conversation_id: conversationId, to: otherIdRef.current ?? peerId });
     const ms = startedAtRef.current ? Date.now() - startedAtRef.current : 0;
-    const kind = current?.kind;
+    const kind = current?.kind ?? kindRef.current;
     const wasActive = ms > 0;
     teardown();
     if (wasActive && kind) logCall(kind, ms);
@@ -182,7 +186,8 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
         return;
       }
       otherIdRef.current = from;
-      setCall({ role: "callee", kind: kind === "video" ? "video" : "audio", status: "ringing", offer, from, name });
+      kindRef.current = kind === "video" ? "video" : "audio";
+      setCall({ role: "callee", kind: kindRef.current, status: "ringing", offer, from, name });
       ringTimerRef.current = setTimeout(() => teardown(), RING_TIMEOUT_MS);
     };
 
@@ -209,12 +214,12 @@ export default function CallOverlay({ socket, conversationId, peerId, peerName, 
 
     const onRejected = ({ from }) => {
       if (from !== otherIdRef.current) return;
-      finish(call?.kind, "Połączenie odrzucone");
+      finish(null, "Połączenie odrzucone");
     };
 
     const onEnded = ({ from }) => {
       if (from !== otherIdRef.current) return;
-      finish(call?.kind);
+      finish(null);
     };
 
     socket.on("call:incoming", onIncoming);
