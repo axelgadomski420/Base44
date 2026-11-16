@@ -177,7 +177,7 @@ function PetProfilePage() {
             <div className="min-w-0 flex-1 text-center sm:pb-1 sm:text-left">
               <h1 className="flex items-center justify-center gap-2 font-display text-2xl sm:justify-start">
                 <span className="truncate">{pet.name}</span>
-                {pet.pedigree && (
+                {pet.pedigree_no && (
                   <span className="flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-violet/20 to-aura/20 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-aura">
                     <BadgeCheck className="h-3.5 w-3.5" /> Rodowód
                   </span>
@@ -349,7 +349,7 @@ function HealthTab({ items, isEditor, saving, run, petId }) {
                 <input type="date" className={inputCls} value={form.next_date} onChange={(e) => setForm({ ...form, next_date: e.target.value })} />
               </label>
               <input className={inputCls} placeholder="Lekarz weterynarii" value={form.vet_name} onChange={(e) => setForm({ ...form, vet_name: e.target.value })} />
-              <textarea className={inputCls + " sm:col-span-2"} rows={2} placeholder="Szczegóły — dawkowanie/zaledcenia wprowadzaj WYŁĄCZNIE wg zaleceń weterynarza" value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
+              <textarea className={inputCls + " sm:col-span-2"} rows={2} placeholder="Szczegóły — dawkowanie/zalecenia wprowadzaj WYŁĄCZNIE wg zaleceń weterynarza" value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
               <div className="flex gap-2 sm:col-span-2">
                 <button type="button" className={btnPrimary} disabled={saving || !form.title.trim()}
                   onClick={() => run(async () => { await base44.pets.addHealth(petId, form); setShowForm(false); setForm({ kind: "vaccine", title: "", date: "", next_date: "", details: "", vet_name: "" }); }, "Wpis dodany")}>
