@@ -13,12 +13,11 @@ export const stripeRouter = Router();
 export const PRO_MONTH_PLN = 29.99;
 export const PRO_YEAR_PLN = 249.99;
 
-// Pakiety monet zostają wyłącznie dla gry/arcade — Premium jest TYLKO w PLN.
+// I: pakiety monet wg briefu — dokładnie dwa, ceny w groszach:
+//   1000 monet = 9,99 zł (999 gr), 5000 monet = 39,99 zł (3999 gr).
 export const COIN_PACKAGES = [
-  { id: "coins_100", coins: 100, amount: 999, currency: "pln", label: "100 monet" },
-  { id: "coins_500", coins: 500, amount: 3999, currency: "pln", label: "500 monet" },
-  { id: "coins_1200", coins: 1200, amount: 7999, currency: "pln", label: "1200 monet" },
-  { id: "coins_3000", coins: 3000, amount: 17999, currency: "pln", label: "3000 monet" },
+  { id: "coins_1000", coins: 1000, amount: 999, currency: "pln", label: "1000 monet" },
+  { id: "coins_5000", coins: 5000, amount: 3999, currency: "pln", label: "5000 monet" },
 ];
 
 const checkoutSchema = z.object({ package_id: z.string() });
@@ -80,7 +79,7 @@ stripeRouter.post(
   })
 );
 
-// POST /api/stripe/create-checkout — pakiety monet (arcade), bez zmian.
+// POST /api/stripe/create-checkout — pakiety monet (I: 1000 = 9,99 zł / 5000 = 39,99 zł).
 stripeRouter.post(
   "/create-checkout",
   requireAuth,
@@ -154,6 +153,8 @@ function stripeSignatureOk(req) {
   });
 }
 
+// I: księgowanie monet — idempotentne dzięki UNIQUE(stripe_session_id) w CoinPurchase.
+// Wywoływane z webhooka ORAZ z /confirm (fallback, gdy webhook nie dotrze).
 async function creditSession(session) {
   const sessionId = session?.id;
   const userId = session?.metadata?.user_id || session?.client_reference_id;
@@ -161,7 +162,7 @@ async function creditSession(session) {
   const packageId = session?.metadata?.package_id || "custom";
   if (!sessionId || !userId || !Number.isFinite(coins) || coins <= 0) return null;
   const existing = await prisma.coinPurchase.findUnique({ where: { stripe_session_id: sessionId } });
-  if (existing) return existing;
+  if (existing) return { sessionId, coins, duplicate: true };
   const amount = Number(session.amount_total ?? 0);
   await prisma.coinPurchase.create({
     data: {
@@ -248,6 +249,44 @@ async function handleSubscriptionDeleted(subscription) {
   return sub;
 }
 
+// GET /api/stripe/confirm?session_id= — I: fallback księgowania monet po powrocie
+// z Checkout, gdy webhook nie dotarł (niedostępny / opóźniony). Idempotentny:
+// UNIQUE(stripe_session_id) w CoinPurchase blokuje podwójne zaksięgowanie.
+stripeRouter.get(
+  "/confirm",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const sessionId = String(req.query.session_id ?? "").trim();
+    if (!sessionId || !config.stripeSecret) throw badRequest("Brak session_id");
+    const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: `Bearer ${config.stripeSecret}` },
+    });
+    const session = await response.json();
+    if (!response.ok || session.payment_status !== "paid") throw badRequest("Płatność nie została potwierdzona");
+    const sessionUserId = session?.metadata?.user_id || session?.client_reference_id;
+    if (sessionUserId !== req.user.id) throw badRequest("Sesja należy do innego konta");
+    if (session?.metadata?.kind === "premium_subscription") {
+      await activatePro(session);
+      res.json({ credited: "premium" });
+      return;
+    }
+    const result = await creditSession(session);
+    if (result?.duplicate) {
+      res.json({ credited: result.coins, duplicate: true });
+      return;
+    }
+    if (result?.coins) {
+      await notify(req.user.id, {
+        type: "system",
+        title: "PURRE Coins doładowane 🪙",
+        body: `+${result.coins} monet na koncie (płatność potwierdzona).`,
+        link: "/rewards",
+      });
+    }
+    res.json({ credited: result?.coins ?? 0 });
+  })
+);
+
 stripeRouter.post(
   "/webhook",
   asyncHandler(async (req, res) => {
@@ -256,6 +295,26 @@ stripeRouter.post(
       return;
     }
     const event = JSON.parse(req.rawBody.toString("utf8"));
+
+    // I: idempotencja webhooka — rejestr przetworzonych event_id.
+    // Stripe dostarcza eventy co najmniej raz; bez rejestru ponowny delivery
+    // mógłby ponownie uruchomić logikę księgowania / aktywacji PRO.
+    const eventId = String(event?.id ?? "");
+    if (eventId) {
+      const seen = await prisma.stripeWebhookEvent.findUnique({ where: { event_id: eventId } });
+      if (seen) {
+        res.json({ received: true, duplicate: true });
+        return;
+      }
+      try {
+        await prisma.stripeWebhookEvent.create({ data: { event_id: eventId, type: String(event?.type ?? "") } });
+      } catch {
+        // wyścig dwóch delivery tego samego event_id — drugi to duplikat
+        res.json({ received: true, duplicate: true });
+        return;
+      }
+    }
+
     try {
       switch (event.type) {
         case "checkout.session.completed": {
@@ -275,6 +334,12 @@ stripeRouter.post(
       }
     } catch (err) {
       console.error("[stripe webhook]", err?.message);
+      // Cofamy rejestrację, aby Stripe mógł ponownie dostarczyć event (retry).
+      if (eventId) {
+        await prisma.stripeWebhookEvent.deleteMany({ where: { event_id: eventId } }).catch(() => null);
+      }
+      res.status(500).json({ error: { message: "Webhook processing failed", code: "WEBHOOK_FAILED" } });
+      return;
     }
     res.json({ received: true });
   })

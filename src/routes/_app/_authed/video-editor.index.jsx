@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import { base44 } from "@/api/base44Client";
+import { base44, storiesApi } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { ensureProfile } from "@/lib/useProfile";
 import { renderStudioFrame, STUDIO_FILTERS } from "@/lib/purre-studio";
@@ -19,12 +20,12 @@ const SPEEDS = [0.5, 1, 1.5, 2];
 function VideoEditorPage() {
   const navigate = useNavigate();
   const { user, navigateToLogin } = useAuth();
-
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const urlRef = useRef("");
-  const exportingRef = useRef(false);
-
+  const audioCtxRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const coverBlobRef = useRef(null);
   const [src, setSrc] = useState("");
   const [duration, setDuration] = useState(0);
   const [start, setStart] = useState(0);
@@ -32,30 +33,29 @@ function VideoEditorPage() {
   const [filter, setFilter] = useState(FILTERS[1]);
   const [caption, setCaption] = useState("");
   const [speed, setSpeed] = useState(1);
-  const [exporting, setExporting] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [hasCover, setHasCover] = useState(false);
+  const [stage, setStage] = useState(""); // "" | "export" | "upload" | "save"
+  const [progress, setProgress] = useState(0);
+  const busy = Boolean(stage);
 
-  useEffect(() => () => {
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-  }, []);
+  useEffect(() => () => URL.revokeObjectURL(urlRef.current), []);
 
   const choose = (file) => {
     if (!file) return;
-
     if (!file.type.startsWith("video/")) {
       toast.error("Wybierz plik wideo.");
       return;
     }
-
     if (file.size > 100 * 1024 * 1024) {
       toast.error("Film może mieć maksymalnie 100 MB.");
       return;
     }
-
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-
     const url = URL.createObjectURL(file);
     urlRef.current = url;
-
+    coverBlobRef.current = null;
+    setHasCover(false);
     setSrc(url);
     setStart(0);
     setEnd(0);
@@ -65,17 +65,16 @@ function VideoEditorPage() {
   const onLoaded = () => {
     const video = videoRef.current;
     if (!video) return;
-
     const length = Number.isFinite(video.duration) ? video.duration : 0;
     setDuration(length);
     setEnd(length);
     video.playbackRate = speed;
+    video.volume = volume;
   };
 
   const onTime = () => {
     const video = videoRef.current;
-    if (!video || exportingRef.current || !end) return;
-
+    if (!video || !end) return;
     if (video.currentTime >= end) {
       video.pause();
       video.currentTime = start;
@@ -85,15 +84,18 @@ function VideoEditorPage() {
   const playTrim = () => {
     const video = videoRef.current;
     if (!video) return;
-
     video.playbackRate = speed;
     video.currentTime = start;
-    video.play().catch(() => toast.error("Nie udało się odtworzyć filmu."));
+    video.play().catch(() => toast.error("Przeglądarka zablokowała odtwarzanie"));
+  };
+
+  const setVolumeValue = (value) => {
+    setVolume(value);
+    if (videoRef.current) videoRef.current.volume = value;
   };
 
   const drawFrame = (video, context, width, height) => {
     if (!video?.videoWidth || !video?.videoHeight || !context?.canvas) return;
-
     renderStudioFrame(video, context.canvas, {
       width,
       height,
@@ -115,277 +117,245 @@ function VideoEditorPage() {
     });
   };
 
-  const cover = () => {
+  // Dźwięk oryginału: MediaElementSource można utworzyć tylko raz na element — cache w ref.
+  const ensureAudioGraph = () => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-
-    if (!video || !canvas || !video.videoWidth) {
-      toast.error("Najpierw wybierz film.");
-      return;
-    }
-
-    canvas.width = 720;
-    canvas.height = 1280;
-
-    drawFrame(video, canvas.getContext("2d"), canvas.width, canvas.height);
-
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        toast.error("Nie udało się przygotować okładki.");
-        return;
+    if (!video) return null;
+    if (!audioCtxRef.current) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      try {
+        const ctx = new Ctx();
+        audioCtxRef.current = ctx;
+        audioSourceRef.current = ctx.createMediaElementSource(video);
+        audioSourceRef.current.connect(ctx.destination);
+      } catch {
+        audioCtxRef.current = null;
+        audioSourceRef.current = null;
       }
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "purre-cover.jpg";
-      link.click();
-      URL.revokeObjectURL(url);
-      toast.success("Okładka została zapisana.");
-    }, "image/jpeg", 0.92);
+    }
+    return audioCtxRef.current;
   };
 
-  const exportClip = async () => {
+  const canvasToBlob = () =>
+    new Promise((resolve) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return resolve(null);
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
+    });
+
+  // Okładka: klatka bieżąca (przycisk) albo pierwsza klatka przycięcia (auto przy publikacji).
+  const captureCoverBlob = async (atStart = false) => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth) return null;
+    if (atStart) {
+      video.pause();
+      video.currentTime = start || 0;
+      await new Promise((resolve) => {
+        video.onseeked = () => resolve();
+        setTimeout(resolve, 800);
+      });
+    }
+    canvas.width = 720;
+    canvas.height = 1280;
+    drawFrame(video, canvas.getContext("2d"), canvas.width, canvas.height);
+    return canvasToBlob();
+  };
 
+  const saveCover = async () => {
+    const blob = await captureCoverBlob(false);
+    if (!blob) return;
+    coverBlobRef.current = blob;
+    setHasCover(true);
+    toast.success("Okładka ustawiona — zostanie dołączona do publikacji");
+  };
+
+  const downloadCover = async () => {
+    const blob = await captureCoverBlob(false);
+    if (!blob) return;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "purre-cover.jpg";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  };
+
+  // Nagranie przyciętego klipu (z filtrem, napisem i DŹWIĘKIEM) do bloba WebM.
+  const recordClip = async () => {
     if (!user) {
       navigateToLogin();
-      return;
+      return null;
     }
-
-    if (!video || !canvas || !video.videoWidth || !duration) {
-      toast.error("Najpierw wybierz poprawny film.");
-      return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth) {
+      toast.error("Najpierw wybierz wideo");
+      return null;
     }
-
     if (typeof canvas.captureStream !== "function" || typeof MediaRecorder === "undefined") {
-      toast.error("Ta przeglądarka nie obsługuje eksportu wideo.");
-      return;
+      toast.error("Ta przeglądarka nie umie nagrać WebM — użyj Chrome/Edge/Firefox");
+      return null;
     }
-
-    const clipStart = Math.max(0, start);
-    const clipEnd = Math.min(end, duration);
-
-    if (clipEnd - clipStart < 0.2) {
-      toast.error("Wybierz fragment filmu o długości co najmniej 0,2 sekundy.");
-      return;
+    setStage("export");
+    setProgress(0);
+    canvas.width = 720;
+    canvas.height = 1280;
+    const context = canvas.getContext("2d");
+    video.pause();
+    video.currentTime = start || 0;
+    await new Promise((resolve) => {
+      video.onseeked = () => resolve();
+      setTimeout(resolve, 800);
+    });
+    const stream = canvas.captureStream(30);
+    const audioCtx = ensureAudioGraph();
+    if (audioCtx && audioSourceRef.current) {
+      await audioCtx.resume().catch(() => {});
+      const dest = audioCtx.createMediaStreamDestination();
+      audioSourceRef.current.connect(dest);
+      dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
     }
-
-    exportingRef.current = true;
-    setExporting(true);
-
-    let outputStream;
-    let audioStream;
-    let recorder;
-    let animationId;
-
-    try {
-      canvas.width = 720;
-      canvas.height = 1280;
-
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Nie można uruchomić eksportu obrazu.");
-
-      video.pause();
-
-      if (Math.abs(video.currentTime - clipStart) > 0.01) {
-        await new Promise((resolve, reject) => {
-          const onSeeked = () => {
-            cleanup();
-            resolve();
-          };
-          const onError = () => {
-            cleanup();
-            reject(new Error("Nie udało się ustawić początku filmu."));
-          };
-          const cleanup = () => {
-            video.removeEventListener("seeked", onSeeked);
-            video.removeEventListener("error", onError);
-          };
-
-          video.addEventListener("seeked", onSeeked, { once: true });
-          video.addEventListener("error", onError, { once: true });
-          video.currentTime = clipStart;
-        });
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
+    const chunks = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    const done = new Promise((resolve) => {
+      recorder.onstop = () => resolve();
+    });
+    recorder.start();
+    video.playbackRate = speed;
+    await video.play().catch(() => {});
+    const span = Math.max(end - start, 0.2);
+    const paint = () => {
+      if (video.currentTime >= end || video.ended) {
+        video.pause();
+        recorder.stop();
+        return;
       }
-
       drawFrame(video, context, canvas.width, canvas.height);
+      setProgress(Math.min(99, Math.round(((video.currentTime - start) / span) * 100)));
+      requestAnimationFrame(paint);
+    };
+    paint();
+    await done;
+    setProgress(100);
+    return new Blob(chunks, { type: "video/webm" });
+  };
 
-      outputStream = canvas.captureStream(30);
+  const saveWebm = async () => {
+    const blob = await recordClip();
+    setStage("");
+    if (!blob) return;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "purre-reel.webm";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    toast.success("Klip pobrany na urządzenie");
+  };
 
-      // Obraz pochodzi z canvas, a dźwięk z oryginalnego filmu.
-      const captureAudio = video.captureStream || video.mozCaptureStream;
-      if (captureAudio) {
-        try {
-          audioStream = captureAudio.call(video);
-          for (const track of audioStream.getAudioTracks()) {
-            outputStream.addTrack(track);
-          }
-        } catch {
-          audioStream = null;
-        }
+  const publishReel = async () => {
+    if (busy || !user) return;
+    try {
+      const blob = await recordClip();
+      if (!blob) return;
+      setStage("upload");
+      const up = await base44.integrations.Core.UploadPublicFile({
+        file: new File([blob], "purre-reel.webm", { type: "video/webm" }),
+      });
+      let coverUrl = "";
+      const coverBlob = coverBlobRef.current || (await captureCoverBlob(true));
+      if (coverBlob) {
+        const upCover = await base44.integrations.Core.UploadPublicFile({
+          file: new File([coverBlob], "purre-cover.jpg", { type: "image/jpeg" }),
+        });
+        coverUrl = upCover.file_url;
       }
-
-      const mimeTypes = [
-        "video/webm;codecs=vp9,opus",
-        "video/webm;codecs=vp8,opus",
-        "video/webm",
-      ];
-
-      const mimeType = mimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
-      if (!mimeType) throw new Error("Przeglądarka nie obsługuje formatu WebM.");
-
-      recorder = new MediaRecorder(outputStream, { mimeType });
-      const chunks = [];
-
-      recorder.ondataavailable = (event) => {
-        if (event.data?.size) chunks.push(event.data);
-      };
-
-      const recordingDone = new Promise((resolve, reject) => {
-        recorder.onstop = resolve;
-        recorder.onerror = () => reject(new Error("Błąd podczas kodowania filmu."));
-      });
-
-      recorder.start(250);
-      video.playbackRate = speed;
-
-      await video.play();
-
-      await new Promise((resolve, reject) => {
-        let stopped = false;
-
-        const finish = () => {
-          if (stopped) return;
-          stopped = true;
-          if (animationId) cancelAnimationFrame(animationId);
-          video.pause();
-          if (recorder.state !== "inactive") recorder.stop();
-          resolve();
-        };
-
-        const paint = () => {
-          if (stopped) return;
-
-          if (video.currentTime >= clipEnd || video.ended) {
-            finish();
-            return;
-          }
-
-          drawFrame(video, context, canvas.width, canvas.height);
-          animationId = requestAnimationFrame(paint);
-        };
-
-        const onPlaybackError = () => {
-          if (stopped) return;
-          stopped = true;
-          if (animationId) cancelAnimationFrame(animationId);
-          if (recorder.state !== "inactive") recorder.stop();
-          reject(new Error("Nie udało się odtworzyć filmu podczas eksportu."));
-        };
-
-        video.addEventListener("error", onPlaybackError, { once: true });
-        animationId = requestAnimationFrame(paint);
-      });
-
-      await recordingDone;
-
-      const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
-      if (!blob.size) throw new Error("Eksport filmu jest pusty.");
-
-      toast.message("Przesyłanie filmu na serwer…");
-
-      const file = new File([blob], `purre-reel-${Date.now()}.webm`, {
-        type: blob.type,
-      });
-
-      const uploadResult = await base44.integrations.Core.UploadPublicFile({ file });
-      const videoUrl = uploadResult?.file_url || uploadResult?.url;
-
-      if (!videoUrl) {
-        throw new Error("Serwer nie zwrócił adresu przesłanego filmu.");
-      }
-
-      const profile = await ensureProfile(user);
-
+      setStage("save");
+      const currentProfile = await ensureProfile(user);
       await base44.entities.Post.create({
         author_id: user.id,
-        author_name: profile?.kennel_name || profile?.display_name || user.full_name || "Użytkownik PURRE PETS",
-        author_handle: profile?.handle,
-        author_avatar: profile?.avatar_url,
-        author_verified: !!profile?.verified,
-        caption: caption.trim(),
-        image_url: "",
-        image_urls: [],
-        video_url: videoUrl,
-        tags: [],
+        author_name: currentProfile?.kennel_name || currentProfile?.display_name || user.full_name,
+        author_handle: currentProfile?.handle,
+        author_avatar: currentProfile?.avatar_url,
+        author_verified: !!currentProfile?.verified,
+        caption: caption.trim() || "Mój nowy reel",
+        image_url: coverUrl,
+        image_urls: coverUrl ? [coverUrl] : [],
+        video_url: up.file_url,
         likes: 0,
         comment_count: 0,
         status: "published",
       });
-
-      toast.success("Reel został opublikowany w PURRE PETS!");
-      navigate({ to: "/" });
+      toast.success("Reel opublikowany — materiał jest w aplikacji, nie w pobranych");
+      navigate({ to: "/reels" });
     } catch (error) {
-      console.error("PURRE PETS Reel export:", error);
-      toast.error(error?.message || "Nie udało się opublikować Reels.");
+      toast.error(error?.message ?? "Publikacja nie powiodła się");
     } finally {
-      if (animationId) cancelAnimationFrame(animationId);
-
-      if (recorder && recorder.state !== "inactive") {
-        try {
-          recorder.stop();
-        } catch { /* Recorder mógł już zostać zatrzymany przez przeglądarkę. */ }
-      }
-
-      if (outputStream) {
-        outputStream.getTracks().forEach((track) => track.stop());
-      }
-
-      if (audioStream) {
-        audioStream.getTracks().forEach((track) => track.stop());
-      }
-
-      if (video) {
-        video.pause();
-        video.playbackRate = 1;
-      }
-
-      exportingRef.current = false;
-      setExporting(false);
+      setStage("");
+      setProgress(0);
     }
   };
+
+  const publishStory = async () => {
+    if (busy || !user) return;
+    try {
+      const blob = await recordClip();
+      if (!blob) return;
+      setStage("upload");
+      const up = await base44.integrations.Core.UploadPublicFile({
+        file: new File([blob], "purre-story.webm", { type: "video/webm" }),
+      });
+      setStage("save");
+      await storiesApi.create({
+        media_url: up.file_url,
+        media_type: "video",
+        caption: caption.trim() || null,
+        music_title: null,
+        music_url: null,
+        filter: filter.id !== "none" ? filter.id : null,
+        overlay_text: null,
+      });
+      toast.success("Relacja opublikowana — zniknie po 24 h");
+      navigate({ to: "/" });
+    } catch (error) {
+      toast.error(error?.message ?? "Publikacja relacji nie powiodła się");
+    } finally {
+      setStage("");
+      setProgress(0);
+    }
+  };
+
+  const stageLabel = stage === "export" ? `Nagrywam… ${progress}%` : stage === "upload" ? "Wysyłam na serwer…" : "Zapisuję publikację…";
 
   return (
     <div>
       <TopBar title="Edytor" />
-
       <div className="px-4 pb-12 pt-6 lg:px-8">
-        <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
-          reels studio
-        </p>
-
+        <p className="text-[10px] uppercase tracking-[0.4em] text-muted-foreground">reels studio</p>
         <h1 className="mt-2 font-display text-4xl">
           <span className="aura-text">Edytor wideo</span>
         </h1>
-
         <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          Przytnij film, wybierz filtr i dodaj napis. Gotowy materiał zostanie przesłany
-          i opublikowany jako Reel. Dźwięk oryginału jest zachowywany, jeśli przeglądarka
-          udostępnia przechwytywanie ścieżki audio.
+          Przytnij, nałóż filtr i napis, ustaw okładkę, a potem opublikuj materiał jako Reel lub Relację.
+          Pobieranie na urządzenie to osobna, świadoma opcja.
         </p>
 
         <label className="mt-6 flex cursor-pointer flex-col items-center justify-center rounded-[var(--radius)] border border-dashed border-white/20 bg-white/5 px-6 py-10 text-center">
           <span className="text-sm">Wybierz wideo z telefonu lub komputera</span>
-          <span className="mt-1 text-[11px] text-muted-foreground">
-            MP4, WebM, MOV · maksymalnie 100 MB
-          </span>
+          <span className="mt-1 text-[11px] text-muted-foreground">MP4, WebM, MOV — do 100 MB</span>
           <input
             type="file"
             accept="video/*"
             className="sr-only"
-            disabled={exporting}
+            disabled={busy}
             onChange={(event) => {
               choose(event.target.files?.[0]);
               event.target.value = "";
@@ -404,124 +374,128 @@ function VideoEditorPage() {
                 onLoadedMetadata={onLoaded}
                 onTimeUpdate={onTime}
                 className="aspect-[9/16] w-full object-cover"
-                style={{ filter: filter.css }}
+                style={{ filter: filter.css || "none" }}
               />
               {caption && (
-                <p className="-mt-16 px-4 pb-6 text-center font-display text-xl text-white drop-shadow">
-                  {caption}
-                </p>
+                <p className="-mt-16 px-4 pb-6 text-center font-display text-xl text-white drop-shadow">{caption}</p>
               )}
             </div>
-
             <div className="space-y-4">
               <label className="block text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Początek: {start.toFixed(1)} s
+                Start {start.toFixed(1)} s
                 <input
                   type="range"
                   min={0}
-                  max={Math.max(duration - 0.2, 0.1)}
+                  max={Math.max(duration, 0.1)}
                   step={0.1}
-                  value={Math.min(start, Math.max(duration - 0.2, 0))}
-                  disabled={exporting}
-                  onChange={(event) => setStart(
-                    Math.min(Number(event.target.value), Math.max(end - 0.2, 0))
-                  )}
+                  value={start}
+                  onChange={(event) => setStart(Math.min(Number(event.target.value), end - 0.2))}
                   className="mt-2 w-full"
                 />
               </label>
-
               <label className="block text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Koniec: {end.toFixed(1)} s
+                Koniec {end.toFixed(1)} s
                 <input
                   type="range"
-                  min={Math.min(start + 0.2, duration)}
-                  max={Math.max(duration, 0.2)}
+                  min={0}
+                  max={Math.max(duration, 0.1)}
                   step={0.1}
-                  value={Math.max(end, Math.min(start + 0.2, duration))}
-                  disabled={exporting}
-                  onChange={(event) => setEnd(
-                    Math.max(Number(event.target.value), start + 0.2)
-                  )}
+                  value={end}
+                  onChange={(event) => setEnd(Math.max(Number(event.target.value), start + 0.2))}
                   className="mt-2 w-full"
                 />
               </label>
-
+              <label className="block text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Głośność podglądu {Math.round(volume * 100)}%
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={volume}
+                  onChange={(event) => setVolumeValue(Number(event.target.value))}
+                  className="mt-2 w-full"
+                />
+              </label>
               <div className="flex flex-wrap gap-2">
                 {SPEEDS.map((value) => (
                   <button
                     key={value}
                     type="button"
-                    disabled={exporting}
                     onClick={() => {
                       setSpeed(value);
                       if (videoRef.current) videoRef.current.playbackRate = value;
                     }}
-                    className={`rounded-full px-3 py-1.5 text-[11px] ${
-                      speed === value ? "bg-foreground text-background" : "border border-border/70"
-                    }`}
+                    className={`rounded-full px-3 py-1.5 text-[11px] ${speed === value ? "bg-foreground text-background" : "border border-border/70"}`}
                   >
                     {value}×
                   </button>
                 ))}
               </div>
-
               <div className="flex flex-wrap gap-2">
                 {FILTERS.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    disabled={exporting}
                     onClick={() => setFilter(item)}
-                    className={`rounded-full px-3 py-1.5 text-[11px] ${
-                      filter.id === item.id ? "bg-aura text-background" : "border border-border/70"
-                    }`}
+                    className={`rounded-full px-3 py-1.5 text-[11px] ${filter.id === item.id ? "bg-aura text-background" : "border border-border/70"}`}
                   >
                     {item.label}
                   </button>
                 ))}
               </div>
-
               <input
                 value={caption}
                 maxLength={42}
-                disabled={exporting}
                 placeholder="Napis na klipie"
                 onChange={(event) => setCaption(event.target.value)}
                 className="w-full rounded-xl border border-border/70 bg-card/60 px-3 py-2 text-sm"
               />
-
+              {busy && (
+                <div>
+                  <p className="text-[11px] text-aura">{stageLabel}</p>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+                    <div className="h-full rounded-full bg-gradient-to-r from-violet to-aura transition-all" style={{ width: `${stage === "export" ? progress : 100}%` }} />
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={exporting}
-                  onClick={playTrim}
-                  className="rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                >
+                <button type="button" onClick={playTrim} disabled={busy} className="rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50">
                   Odtwórz fragment
                 </button>
-
-                <button
-                  type="button"
-                  disabled={exporting}
-                  onClick={cover}
-                  className="rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                >
-                  Okładka JPG
+                <button type="button" onClick={saveCover} disabled={busy} className={`rounded-xl px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] border ${hasCover ? "border-aura text-aura" : "border-border/70"} disabled:opacity-50`}>
+                  {hasCover ? "Okładka ustawiona ✓" : "Ustaw okładkę"}
                 </button>
-
-                <button
-                  type="button"
-                  disabled={exporting || !duration}
-                  onClick={exportClip}
-                  className="btn-aura rounded-xl px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50"
-                >
-                  {exporting ? "Eksport i publikacja…" : "Opublikuj Reel"}
-                </button>
+              </div>
+              <div className="rounded-[var(--radius)] border border-border/70 bg-card/60 p-3">
+                <p className="text-[9px] uppercase tracking-[0.24em] text-muted-foreground">Publikacja</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={publishReel} disabled={busy} className="btn-aura flex items-center gap-2 rounded-xl px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-60">
+                    {stage === "upload" || stage === "save" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Publikuj jako Reel
+                  </button>
+                  <button type="button" onClick={publishStory} disabled={busy} className="flex items-center gap-2 rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50">
+                    Publikuj jako Relację
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  Materiał trafia na serwer i zostaje powiązany z Twoim kontem — bez pobierania na urządzenie.
+                </p>
+              </div>
+              <div className="rounded-[var(--radius)] border border-border/70 bg-card/40 p-3">
+                <p className="text-[9px] uppercase tracking-[0.24em] text-muted-foreground">Pobierz na urządzenie (opcjonalnie)</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={saveWebm} disabled={busy} className="rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50">
+                    Zapisz WebM
+                  </button>
+                  <button type="button" onClick={downloadCover} disabled={busy} className="rounded-xl border border-border/70 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50">
+                    Okładka JPG
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
-
         <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>

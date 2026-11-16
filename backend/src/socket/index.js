@@ -6,7 +6,7 @@ let io = null;
 const onlineUsers = new Map(); // userId -> Set(socketId)
 
 // Rooms:
-//   user:<userId>          — powiadomienia / wallet / premium
+//   user:<userId>          — powiadomienia / wallet / premium / sygnalizacja WebRTC
 //   conversation:<convId>  — realtime czat (Messenger PRO)
 //   post:<postId>          — komentarze i polubienia w czasie rzeczywistym
 //
@@ -14,10 +14,16 @@ const onlineUsers = new Map(); // userId -> Set(socketId)
 //   subscribe / unsubscribe { room } lub { entity }
 //   message:typing  { conversation_id }
 //   message:read    { conversation_id, message_id }
+//   call:invite     { conversation_id, kind, offer }   — H: WebRTC
+//   call:answer     { conversation_id, to, answer }
+//   call:ice        { conversation_id, to, candidate }
+//   call:reject     { conversation_id, to }
+//   call:end        { conversation_id, to }
 // Server → Client:
 //   entity:event { type, data }        — zgodność z base44.entities.*.subscribe
 //   message:new | message:read | message:typing | message:react | message:delete
 //   presence:update { user_id, online }
+//   call:incoming | call:answered | call:ice | call:rejected | call:ended | call:failed
 
 export function initSocket(httpServer, corsOrigins) {
   io = new Server(httpServer, {
@@ -101,6 +107,57 @@ export function initSocket(httpServer, corsOrigins) {
       } catch { /* Błąd pojedynczego zdarzenia socket nie przerywa połączenia. */ }
     });
 
+    // ── H: WebRTC — sygnalizacja połączeń głosowych/wideo (rozmowy 1:1) ──
+    // Serwer tylko przekazuje SDP/ICE między uczestnikami rozmowy (po weryfikacji
+    // członkostwa) — media płyną bezpośrednio peer-to-peer, nie przez serwer.
+
+    socket.on("call:invite", async ({ conversation_id, kind, offer } = {}, ack) => {
+      const peers = await callPeers(user.id, conversation_id);
+      if (!peers || !offer) {
+        if (typeof ack === "function") ack({ ok: false });
+        return;
+      }
+      const name = await displayNameFor(user.id);
+      for (const peer of peers) {
+        io.to(`user:${peer}`).emit("call:incoming", {
+          conversation_id,
+          from: user.id,
+          name: name || user.email,
+          kind: kind === "video" ? "video" : "audio",
+          offer,
+        });
+      }
+      if (typeof ack === "function") ack({ ok: true });
+    });
+
+    socket.on("call:answer", async ({ conversation_id, to, answer } = {}) => {
+      if (!(await canSignal(user.id, conversation_id, to)) || !answer) return;
+      io.to(`user:${to}`).emit("call:answered", {
+        conversation_id,
+        from: user.id,
+        answer,
+      });
+    });
+
+    socket.on("call:ice", async ({ conversation_id, to, candidate } = {}) => {
+      if (!(await canSignal(user.id, conversation_id, to)) || !candidate) return;
+      io.to(`user:${to}`).emit("call:ice", {
+        conversation_id,
+        from: user.id,
+        candidate,
+      });
+    });
+
+    socket.on("call:reject", async ({ conversation_id, to } = {}) => {
+      if (!(await canSignal(user.id, conversation_id, to))) return;
+      io.to(`user:${to}`).emit("call:rejected", { conversation_id, from: user.id });
+    });
+
+    socket.on("call:end", async ({ conversation_id, to } = {}) => {
+      if (!(await canSignal(user.id, conversation_id, to))) return;
+      io.to(`user:${to}`).emit("call:ended", { conversation_id, from: user.id });
+    });
+
     socket.on("disconnect", () => {
       const set = onlineUsers.get(user.id);
       if (set) {
@@ -128,6 +185,33 @@ export function isOnline(userId) {
 async function isMember(userId, conversationId) {
   const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
   return !!conv && Array.isArray(conv.members) && conv.members.includes(userId);
+}
+
+// H: uczestnicy rozmowy 1:1 poza wywołującym.
+async function callPeers(userId, conversationId) {
+  if (!conversationId) return null;
+  const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+  if (!conv || !Array.isArray(conv.members) || !conv.members.includes(userId)) return null;
+  return conv.members.filter((m) => m !== userId);
+}
+
+// H: czy userId może wysłać sygnał do „to” w ramach tej rozmowy.
+async function canSignal(userId, conversationId, to) {
+  if (!conversationId || !to || to === userId) return false;
+  const peers = await callPeers(userId, conversationId);
+  return !!peers && peers.includes(to);
+}
+
+async function displayNameFor(userId) {
+  try {
+    const profile = await prisma.profile.findFirst({
+      where: { user_id: userId },
+      select: { kennel_name: true, display_name: true },
+    });
+    return profile?.kennel_name || profile?.display_name || null;
+  } catch {
+    return null;
+  }
 }
 
 async function roomsFor(user, room, entity) {

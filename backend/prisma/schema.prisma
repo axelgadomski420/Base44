@@ -91,21 +91,35 @@ model Listing {
 }
 
 model Pet {
-  id            String    @id @default(cuid())
-  owner_id      String?
-  owner_name    String?
-  name          String
-  species       String? // "dog" | "cat"
-  breed         String?
-  birth_date    DateTime?
-  color         String?
-  bio           String?
-  photos        String[]  @default([])
-  pedigree      Boolean   @default(false)
-  city          String?
-  created_by_id String?
-  created_date  DateTime  @default(now())
-  updated_date  DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  owner_id       String?
+  owner_name     String?
+  name           String
+  species        String? // "dog" | "cat"
+  breed          String?
+  birth_date     DateTime?
+  adoption_date  DateTime? // rocznica adopcji (E4)
+  sex            String? // "male" | "female"
+  color          String?
+  microchip      String?   // PRYWATNE — nigdy w widoku publicznym (E1/E8)
+  pedigree_no    String?   // numer rodowodu — prywatny domyślnie
+  origin_country String?
+  origin_kennel  String?
+  mother_name    String?
+  father_name    String?
+  siblings       String?
+  temperament    String?
+  interests      String?
+  special_needs  String?
+  status         String    @default("active") // "active" | "deceased" | "rehomed" | "memorial" (E8/Q14)
+  is_public      Boolean   @default(true) // E8: profil publiczny/prywatny — wybiera właściciel
+  bio            String?
+  photos         String[]  @default([])
+  pedigree       Boolean   @default(false)
+  city           String?
+  created_by_id  String?
+  created_date   DateTime  @default(now())
+  updated_date   DateTime  @updatedAt
 
   @@index([owner_id])
   @@map("pets")
@@ -523,4 +537,120 @@ model Subscription {
   @@index([user_id])
   @@index([stripe_subscription_id])
   @@map("subscriptions")
+}
+
+// ============================================================
+// MODUŁ E — KONTA ZWIERZĄT (E2–E9)
+// Wpisy zdrowotne i kalendarz tworzy wyłącznie właściciel/opiekun.
+// AI nie zapisuje tu niczego samodzielnie (E2: dawki tylko od użytkownika).
+// ============================================================
+
+// E2: cyfrowa książeczka zdrowia.
+model PetHealthRecord {
+  id             String    @id @default(cuid())
+  pet_id         String
+  kind           String    @default("note") // "vaccine" | "deworming" | "flea_tick" | "test" | "visit" | "treatment" | "allergy" | "illness" | "medication" | "note"
+  title          String
+  date           DateTime?
+  next_date      DateTime? // kolejna dawka / termin przypomnienia
+  details        String?   // dawkowanie/zalecenia — WYŁĄCZNIE wpis użytkownika wg zaleceń weterynarza
+  vet_name       String?
+  attachment_url String?
+  created_by_id  String?
+  created_date   DateTime  @default(now())
+  updated_date   DateTime  @updatedAt
+
+  @@index([pet_id, date])
+  @@map("pet_health_records")
+}
+
+// E5: waga i rozwój (wykres + historia).
+model PetMeasurement {
+  id            String    @id @default(cuid())
+  pet_id        String
+  weight_kg     Float?
+  height_cm     Float?
+  note          String?
+  measured_at   DateTime  @default(now())
+  created_by_id String?
+  created_date  DateTime  @default(now())
+  updated_date  DateTime  @updatedAt
+
+  @@index([pet_id, measured_at])
+  @@map("pet_measurements")
+}
+
+// E3: kalendarz zwierzęcia (przypomnienia zgodnie z wyborem użytkownika).
+model PetCalendarEvent {
+  id                 String    @id @default(cuid())
+  pet_id             String
+  kind               String    @default("other") // "vaccine" | "deworming" | "grooming" | "bath" | "nails" | "birthday" | "adoption" | "show" | "training" | "vet" | "medication" | "breeding" | "other"
+  title              String
+  date               DateTime
+  repeat             String    @default("none") // "none" | "weekly" | "monthly" | "yearly"
+  remind_days_before Int       @default(3) // 0 = bez przypomnienia
+  note               String?
+  done               Boolean   @default(false)
+  created_by_id      String?
+  created_date       DateTime  @default(now())
+  updated_date       DateTime  @updatedAt
+
+  @@index([pet_id, date])
+  @@map("pet_calendar_events")
+}
+
+// E6: medale i osiągnięcia. official=true WYŁĄCZNIE po potwierdzeniu przez moderatora/admina —
+// nigdy automatycznie (E6: oddzielenie osiągnięć własnych od oficjalnych wyróżnień).
+model PetAchievement {
+  id            String    @id @default(cuid())
+  pet_id        String
+  title         String
+  category      String    @default("custom") // "birthday" | "show" | "sport" | "training" | "breeding" | "community" | "custom"
+  date          DateTime?
+  description   String?
+  image_url     String?
+  organizer     String?
+  official      Boolean   @default(false)
+  confirmed     Boolean   @default(false) // oficjalne potwierdzone przez moderatora
+  confirmed_by  String?
+  created_by_id String?
+  created_date  DateTime  @default(now())
+  updated_date  DateTime  @updatedAt
+
+  @@index([pet_id])
+  @@map("pet_achievements")
+}
+
+// E9: rodzina i współwłaściciele — współdzielenie opieki i kalendarza.
+model PetCaregiver {
+  id            String   @id @default(cuid())
+  pet_id        String
+  user_id       String
+  role          String   @default("caregiver") // "co_owner" | "caregiver"
+  status        String   @default("active") // "active" | "invited"
+  invited_by    String?
+  created_by_id String?
+  created_date  DateTime @default(now())
+  updated_date  DateTime @updatedAt
+
+  @@unique([pet_id, user_id])
+  @@index([user_id])
+  @@map("pet_caregivers")
+}
+
+// ============================================================
+// MODUŁ I — STRIPE: idempotencja webhooka
+// Rejestr przetworzonych event_id — Stripe dostarcza eventy
+// co najmniej raz; bez rejestru ponowny delivery mógłby ponownie
+// uruchomić księgowanie monet / aktywację PRO.
+// ============================================================
+
+model StripeWebhookEvent {
+  id           String   @id @default(cuid())
+  event_id     String   @unique
+  type         String
+  created_date DateTime @default(now())
+
+  @@index([created_date])
+  @@map("stripe_webhook_events")
 }
