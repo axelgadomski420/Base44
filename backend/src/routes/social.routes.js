@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
+import { getPrivateVerificationDocument } from "../lib/private-verification-documents.js";
 import { optionalAuth, requireAuth, isAdmin, isModerator } from "../lib/auth.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../lib/errors.js";
 import { coordsFor } from "../lib/domain.js";
@@ -32,7 +33,7 @@ const verificationSchema = z.object({
   registry_no: z.string().trim().max(80).optional(),
   city: z.string().trim().max(80).optional(),
   species: z.enum(["dog", "cat", "both"]).optional(),
-  document_url: z.string().trim().max(500).optional(),
+  document_url: z.string().trim().regex(/^private-doc:[0-9a-f-]{36}$/i).optional(),
   note: z.string().trim().max(1000).optional(),
 });
 
@@ -139,7 +140,7 @@ async function ensureRadar() {
 
 socialRouter.get(
   "/events",
-  optionalAuth,
+  requireAuth,
   asyncHandler(async (req, res) => {
     await ensureRadar();
     const city = typeof req.query.city === "string" ? req.query.city.trim() : "";
@@ -246,7 +247,7 @@ socialRouter.post(
 
 socialRouter.get(
   "/groups",
-  optionalAuth,
+  requireAuth,
   asyncHandler(async (req, res) => {
     await ensureRadar();
     const type = typeof req.query.type === "string" ? req.query.type : "";
@@ -358,6 +359,13 @@ socialRouter.post(
   requireAuth,
   asyncHandler(async (req, res) => {
     const data = verificationSchema.parse(req.body ?? {});
+    if (data.document_url) {
+      try {
+        await getPrivateVerificationDocument(data.document_url, req.user.id);
+      } catch {
+        throw badRequest("Dokument jest nieprawidłowy lub nie należy do tego konta");
+      }
+    }
     const pending = await prisma.verificationRequest.findFirst({
       where: { user_id: req.user.id, status: "pending" },
     });

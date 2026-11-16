@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { optionalAuth, requireAuth } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
 import { asyncHandler, badRequest, notFound, forbidden } from "../lib/errors.js";
 import { notify } from "./notifications.routes.js";
 
@@ -32,7 +32,7 @@ async function memberOf(groupId, userId) {
 // GET /api/groups?q=&type=&mine=1 — wyszukiwarka grup jak na FB.
 groupsRouter.get(
   "/",
-  optionalAuth,
+  requireAuth,
   asyncHandler(async (req, res) => {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const type = typeof req.query.type === "string" ? req.query.type : "";
@@ -97,7 +97,7 @@ groupsRouter.post(
 // GET /api/groups/:id — szczegóły + posty grupy.
 groupsRouter.get(
   "/:id",
-  optionalAuth,
+  requireAuth,
   asyncHandler(async (req, res) => {
     const group = await prisma.group.findUnique({ where: { id: req.params.id } });
     if (!group) throw notFound("Nie znaleziono grupy");

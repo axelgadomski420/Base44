@@ -91,7 +91,7 @@ export default function ReelVideo({ post }) {
         await navigator.clipboard.writeText(url);
         toast.success("Link skopiowany");
       }
-    } catch {}
+    } catch { /* Użytkownik może anulować systemowe udostępnianie. */ }
   };
 
   const message = async () => {

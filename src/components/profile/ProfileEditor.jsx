@@ -14,14 +14,39 @@ export default function ProfileEditor({ onSaved, className }) {
   const [busy, setBusy] = useState(false);
   const avatarRef = useRef(null);
   const coverRef = useRef(null);
+  const galleryRef = useRef(null);
 
   useEffect(() => {
     profileApi.me().then(setProfile).catch(() => null);
   }, []);
 
   const upload = async (file) => {
+    if (!file) throw new Error("Nie wybrano pliku");
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error("Obsługiwane formaty: JPG, PNG, WEBP, GIF i AVIF");
+    }
+
+    if (file.size <= 0 || file.size > 10 * 1024 * 1024) {
+      throw new Error("Zdjęcie musi mieć rozmiar do 10 MB");
+    }
+
     const up = await base44.integrations.Core.UploadPublicFile({ file });
-    return up.file_url;
+    const url = up?.file_url || up?.url;
+
+    if (typeof url !== "string" || !url.trim()) {
+      throw new Error("Serwer nie zwrócił adresu przesłanego zdjęcia");
+    }
+
+    return url.trim();
   };
 
   const pick = async (file, field) => {
@@ -32,6 +57,63 @@ export default function ProfileEditor({ onSaved, className }) {
       setProfile((p) => ({ ...p, [field]: url }));
     } catch (err) {
       toast.error(err?.message ?? "Upload nie powiódł się");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickGallery = async (fileList) => {
+    const current = profile.gallery_urls ?? [];
+    const selected = Array.from(fileList ?? []);
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+    ];
+
+    const validFiles = selected.filter((file) =>
+      allowedTypes.includes(file.type) &&
+      file.size > 0 &&
+      file.size <= 10 * 1024 * 1024
+    );
+
+    if (validFiles.length !== selected.length) {
+      toast.error("Pominięto pliki w nieobsługiwanym formacie lub większe niż 10 MB");
+    }
+
+    const remaining = Math.max(0, 12 - current.length);
+    const files = validFiles.slice(0, remaining);
+
+    if (validFiles.length > remaining) {
+      toast.error("Galeria może zawierać maksymalnie 12 zdjęć");
+    }
+
+    if (!files.length) {
+      toast.error(remaining === 0
+        ? "Galeria jest pełna — usuń zdjęcie przed dodaniem kolejnego"
+        : "Nie wybrano prawidłowych zdjęć");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const urls = [];
+      for (const file of files) {
+        urls.push(await upload(file));
+      }
+
+      setProfile((p) => ({
+        ...p,
+        gallery_urls: [...(p.gallery_urls ?? []), ...urls].slice(0, 12),
+      }));
+
+      if (urls.length) {
+        toast.success(`Dodano ${urls.length} zdjęć. Zapisz profil, aby zatwierdzić zmiany.`);
+      }
+    } catch (err) {
+      toast.error(err?.message ?? "Nie udało się dodać zdjęć");
     } finally {
       setBusy(false);
     }
@@ -48,6 +130,7 @@ export default function ProfileEditor({ onSaved, className }) {
         city: profile.city ?? undefined,
         avatar_url: profile.avatar_url ?? undefined,
         cover_url: profile.cover_url ?? undefined,
+        gallery_urls: profile.gallery_urls ?? [],
         account_type: profile.account_type,
       });
       setProfile(saved);
@@ -85,11 +168,12 @@ export default function ProfileEditor({ onSaved, className }) {
         <button
           type="button"
           onClick={() => coverRef.current?.click()}
-          className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-3 py-1.5 text-[10px] text-white"
+          disabled={busy}
+          className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-3 py-1.5 text-[10px] text-white disabled:opacity-50"
         >
           <ImageIcon className="h-3 w-3" /> Zmień tło
         </button>
-        <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0], "cover_url"); e.target.value = ""; }} />
+        <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="hidden" disabled={busy} onChange={(e) => { pick(e.target.files?.[0], "cover_url"); e.target.value = ""; }} />
 
         <div className="absolute -bottom-8 left-4">
           <div className="relative">
@@ -101,12 +185,13 @@ export default function ProfileEditor({ onSaved, className }) {
             <button
               type="button"
               onClick={() => avatarRef.current?.click()}
-              className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-aura text-black"
+              disabled={busy}
+              className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-full bg-aura text-black disabled:opacity-50"
               aria-label="Zmień awatar"
             >
               <Camera className="h-3.5 w-3.5" />
             </button>
-            <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={(e) => { pick(e.target.files?.[0], "avatar_url"); e.target.value = ""; }} />
+            <input ref={avatarRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" className="hidden" disabled={busy} onChange={(e) => { pick(e.target.files?.[0], "avatar_url"); e.target.value = ""; }} />
           </div>
         </div>
       </div>
@@ -124,6 +209,58 @@ export default function ProfileEditor({ onSaved, className }) {
             className="w-full rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-sm outline-none"
           />
         </div>
+        <section className="space-y-3 rounded-xl border border-border/60 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">Galeria profilu</p>
+              <p className="text-xs text-muted-foreground">
+                {(profile.gallery_urls ?? []).length}/12 zdjęć
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busy || (profile.gallery_urls ?? []).length >= 12}
+              onClick={() => galleryRef.current?.click()}
+              className="rounded-lg bg-aura px-3 py-2 text-xs font-semibold text-black disabled:opacity-50"
+            >
+              Dodaj zdjęcia
+            </button>
+            <input
+              ref={galleryRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+              multiple
+              disabled={busy}
+              className="hidden"
+              onChange={(e) => {
+                pickGallery(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {(profile.gallery_urls ?? []).length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {(profile.gallery_urls ?? []).map((url, index) => (
+                <div key={`${url}-${index}`} className="relative aspect-square overflow-hidden rounded-lg">
+                  <img src={url} alt={`Zdjęcie galerii ${index + 1}`} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    aria-label="Usuń zdjęcie"
+                    onClick={() => setProfile((p) => ({
+                      ...p,
+                      gallery_urls: (p.gallery_urls ?? []).filter((_, i) => i !== index),
+                    }))}
+                    className="absolute right-1 top-1 rounded-full bg-black/70 px-2 py-1 text-xs text-white"
+                  >
+                    Usuń
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
         <button
           type="button"
           onClick={save}

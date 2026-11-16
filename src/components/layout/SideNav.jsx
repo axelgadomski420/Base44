@@ -5,6 +5,7 @@ import ThemeLangMenu from "@/components/layout/ThemeLangMenu";
 import { NAV_ITEMS } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/AuthContext";
 
 const MORE = [
   { to: "/events", label: "Wydarzenia", icon: CalendarDays },
@@ -15,6 +16,7 @@ const MORE = [
 
 export default function SideNav({ coins = 0, level = 1 }) {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { t } = useI18n();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
@@ -56,7 +58,11 @@ export default function SideNav({ coins = 0, level = 1 }) {
       </nav>
 
       <div className="mt-6 flex flex-col gap-1 border-t border-border/50 pt-4">
-        {MORE.map((item) => {
+        {MORE
+          .filter((item) =>
+            isAuthenticated || !["/events", "/community"].includes(item.to)
+          )
+          .map((item) => {
           const Icon = item.icon;
           const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
           return (

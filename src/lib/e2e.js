@@ -50,7 +50,7 @@ export async function ensureE2eKeys(registerFn) {
   try {
     const raw = localStorage.getItem(PRIV_KEY);
     if (raw) privJwk = JSON.parse(raw);
-  } catch {}
+  } catch { /* Niepoprawny lub niedostępny zapisany klucz zostanie odtworzony. */ }
   if (!privJwk) {
     const pair = await crypto.subtle.generateKey(ALGO, true, ["deriveKey"]);
     privJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);

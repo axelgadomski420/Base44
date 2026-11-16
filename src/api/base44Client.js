@@ -21,7 +21,7 @@ if (typeof window !== "undefined") {
       current.searchParams.delete("google_token");
       window.history.replaceState({}, "", current.toString());
     }
-  } catch {}
+  } catch { /* Środowisko może blokować dostęp do localStorage lub odpowiedź może nie być JSON-em. */ }
 }
 
 export class ApiError extends Error {
@@ -59,6 +59,28 @@ async function request(path, { method = "GET", body, formData } = {}) {
 }
 
 // ---------------------------------------------------------------- Socket.IO
+
+
+async function requestBlob(path) {
+  const headers = {};
+  const current = token();
+  if (current) headers.Authorization = `Bearer ${current}`;
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "GET",
+    headers,
+    credentials: "omit",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : null; } catch { /* Środowisko może blokować dostęp do localStorage lub odpowiedź może nie być JSON-em. */ }
+    throw new ApiError(response.status, payload);
+  }
+
+  return response.blob();
+}
 
 let socket = null;
 
@@ -162,7 +184,7 @@ export const auth = {
         localStorage.removeItem("token");
         localStorage.removeItem("auth_token");
       }
-    } catch {}
+    } catch { /* Środowisko może blokować dostęp do localStorage lub odpowiedź może nie być JSON-em. */ }
   },
   async me() {
     if (!token()) {
@@ -305,7 +327,8 @@ export const adminApi = {
   reviewPost: (id, body) => request(`/api/admin/posts/${id}`, { method: "POST", body }),
   users: (q) => request(`/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   updateUser: (id, body) => request(`/api/admin/users/${id}`, { method: "PATCH", body }),
-  analyzeVerification: (id) => request(`/api/admin/verification/${id}/analyze`, { method: "POST", body: {} }),
+  analyzeVerification: (id) => request("/api/ai/verify-breeder", { method: "POST", body: { id } }),
+  getVerificationDocument: (id) => requestBlob(`/api/admin/verification/${encodeURIComponent(id)}/document`),
   resolveReport: (id, body) => request(`/api/admin/reports/${id}`, { method: "POST", body }),
   deleteComment: (id) => request(`/api/admin/comments/${id}`, { method: "DELETE" }),
 };
@@ -372,6 +395,11 @@ export const base44 = {
         const formData = new FormData();
         formData.append("file", file);
         return request("/api/uploads", { method: "POST", formData });
+      },
+      async UploadPrivateVerificationDocument({ file }) {
+        const formData = new FormData();
+        formData.append("file", file);
+        return request("/api/uploads/verification-document", { method: "POST", formData });
       },
     },
   },

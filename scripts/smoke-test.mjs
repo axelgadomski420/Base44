@@ -38,7 +38,7 @@ async function probe(url, name, validate) {
   try {
     const res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(5000) });
     let body = "";
-    try { body = await res.text(); } catch {}
+    try { body = await res.text(); } catch { /* Odpowiedź może nie udostępnić treści. */ }
     check(name, validate(res, body), `HTTP ${res.status}`);
   } catch (error) {
     offline.push(name);

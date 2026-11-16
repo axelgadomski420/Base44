@@ -78,7 +78,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
       requestAnimationFrame(() => {
         if (list) list.scrollTop = list.scrollHeight - prevHeight;
       });
-    } catch {} finally {
+    } catch { /* Błąd operacji wiadomości nie powinien przerwać widoku czatu. */ } finally {
       setLoadingOlder(false);
     }
   }, [conversationId, hasMore, loadingOlder, messages, decryptOne]);
@@ -196,7 +196,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
     setMenuFor(null);
     try {
       await messagesApi.react(m.id, emoji);
-    } catch {}
+    } catch { /* Błąd operacji wiadomości nie powinien przerwać widoku czatu. */ }
   };
 
   const remove = async (m) => {
@@ -204,7 +204,7 @@ export default function ChatWindow({ conversationId, peer, onClose }) {
     try {
       await messagesApi.remove(m.id);
       setMessages((list) => list.filter((x) => x.id !== m.id));
-    } catch {}
+    } catch { /* Błąd operacji wiadomości nie powinien przerwać widoku czatu. */ }
   };
 
   const visible = search.trim()

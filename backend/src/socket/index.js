@@ -98,7 +98,7 @@ export function initSocket(httpServer, corsOrigins) {
           user_id: user.id,
           ts: Date.now(),
         });
-      } catch {}
+      } catch { /* Błąd pojedynczego zdarzenia socket nie przerywa połączenia. */ }
     });
 
     socket.on("disconnect", () => {

@@ -21,6 +21,13 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [tab, setTab] = useState("overview");
+  const [documentPreview, setDocumentPreview] = useState(null);
+
+  useEffect(() => {
+    return () => {
+      if (documentPreview?.url) URL.revokeObjectURL(documentPreview.url);
+    };
+  }, [documentPreview?.url]);
 
   const load = () => {
     base44.admin
@@ -44,6 +51,44 @@ function AdminPage() {
       load();
     } catch (err) {
       toast.error(err?.message ?? "Nie udało się zapisać decyzji");
+    } finally {
+      setBusy("");
+    }
+  };
+
+
+  const openVerificationDocument = async (item) => {
+    setBusy(item.id + "document");
+    try {
+      const blob = await base44.admin.getVerificationDocument(item.id);
+      const url = URL.createObjectURL(blob);
+      setDocumentPreview({
+        id: item.id,
+        url,
+        type: blob.type || "application/octet-stream",
+        name: item.kennel_name || "Dokument hodowcy",
+      });
+    } catch (err) {
+      toast.error(err?.message ?? "Nie udało się otworzyć dokumentu");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const analyzeVerification = async (id) => {
+    setBusy(id + "analyze");
+    try {
+      const result = await base44.admin.analyzeVerification(id);
+      if (result?.document_readable === false) {
+        toast.error("Dokument nie został poprawnie odczytany. Wniosek wymaga kontroli ręcznej.");
+      } else if (result?.llm_ok) {
+        toast.success("Analiza dokumentu zakończona");
+      } else {
+        toast.error("Analiza AI nie została zakończona — sprawdź dostępność Ollama");
+      }
+      load();
+    } catch (err) {
+      toast.error(err?.message ?? "Nie udało się przeanalizować dokumentu");
     } finally {
       setBusy("");
     }
@@ -138,10 +183,78 @@ function AdminPage() {
                   </p>
                   {item.note && <p className="mt-2 text-sm">{item.note}</p>}
                   {item.document_url && (
-                    <a href={item.document_url} className="mt-2 inline-block text-[11px] text-aura" target="_blank" rel="noreferrer">
-                      Dokument
-                    </a>
+                    <button
+                      type="button"
+                      disabled={busy === item.id + "document"}
+                      onClick={() => openVerificationDocument(item)}
+                      className="mt-2 inline-block text-[11px] text-aura underline disabled:opacity-50"
+                    >
+                      {busy === item.id + "document" ? "Otwieranie dokumentu…" : "Otwórz dokument"}
+                    </button>
                   )}
+
+                  {documentPreview?.id === item.id && (
+                    <div className="mt-3 rounded-xl border border-border/70 bg-background p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-xs font-semibold">Podgląd dokumentu</p>
+                        <button
+                          type="button"
+                          onClick={() => setDocumentPreview(null)}
+                          className="text-xs text-aura underline"
+                        >
+                          Zamknij
+                        </button>
+                      </div>
+                      {documentPreview.type.startsWith("image/") ? (
+                        <img
+                          src={documentPreview.url}
+                          alt="Dokument weryfikacyjny"
+                          className="max-h-[65vh] w-full rounded-lg object-contain"
+                        />
+                      ) : documentPreview.type === "application/pdf" ? (
+                        <iframe
+                          src={documentPreview.url}
+                          title="Dokument weryfikacyjny"
+                          className="h-[65vh] w-full rounded-lg border border-border"
+                        />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Ten format dokumentu nie obsługuje podglądu w przeglądarce.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {item.ai_analyzed_at && (
+                    <div className="mt-3 rounded-xl border border-border/70 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Wynik analizy AI
+                      </p>
+                      <p className="mt-1 text-sm">
+                        Rekomendacja: <strong>{item.ai_recommendation || "manual"}</strong>
+                        {item.ai_score !== null && item.ai_score !== undefined
+                          ? ` · Ocena: ${item.ai_score}/100`
+                          : ""}
+                      </p>
+                      {item.ai_reasoning && (
+                        <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                          {item.ai_reasoning}
+                        </p>
+                      )}
+                      <p className="mt-2 text-[10px] text-muted-foreground">
+                        Analiza nie zastępuje ostatecznej decyzji moderatora.
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={busy.startsWith(item.id)}
+                    onClick={() => analyzeVerification(item.id)}
+                    className="mt-3 rounded-xl border border-border/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] disabled:opacity-50"
+                  >
+                    {busy === item.id + "analyze" ? "Analizowanie dokumentu…" : "Analizuj dokument (OCR + AI)"}
+                  </button>
                   <div className="mt-3 flex gap-2">
                     <button
                       type="button"

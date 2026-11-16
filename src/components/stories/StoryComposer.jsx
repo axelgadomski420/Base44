@@ -4,19 +4,13 @@ import { toast } from "sonner";
 import { base44, storiesApi } from "@/api/base44Client";
 import SoundPicker from "@/components/reels/SoundPicker";
 import { cn } from "@/lib/utils";
+import { exportStudioImage, STUDIO_FILTERS } from "@/lib/purre-studio";
 
-// Presety filtrów w stylu Instagram Stories (CSS filter).
-export const STORY_FILTERS = [
-  { id: "none", label: "Oryginał", css: "none" },
-  { id: "warm", label: "Ciepły", css: "saturate(1.25) sepia(0.22) hue-rotate(-8deg)" },
-  { id: "cool", label: "Zimny", css: "saturate(1.1) hue-rotate(12deg) brightness(1.05)" },
-  { id: "mono", label: "Mono", css: "grayscale(1) contrast(1.1)" },
-  { id: "vivid", label: "Żywy", css: "saturate(1.7) contrast(1.12)" },
-  { id: "fade", label: "Wyblakły", css: "saturate(0.72) brightness(1.1) contrast(0.92)" },
-  { id: "drama", label: "Dramat", css: "contrast(1.35) brightness(0.92) saturate(1.2)" },
-];
+// Wspólne presety PURRE PETS STUDIO — podgląd i eksport.
+export const STORY_FILTERS = STUDIO_FILTERS;
 
-export const filterCss = (id) => STORY_FILTERS.find((f) => f.id === id)?.css ?? "none";
+export const filterCss = (id) =>
+  STORY_FILTERS.find((filter) => filter.id === id)?.css ?? "none";
 
 const POSITIONS = { top: "items-start pt-14", center: "items-center", bottom: "items-end pb-24" };
 
@@ -37,13 +31,38 @@ export default function StoryComposer({ onClose, onPublished }) {
   const [publishing, setPublishing] = useState(false);
   const fileRef = useRef(null);
   const previewRef = useRef(null);
+  const imageRef = useRef(null);
 
   useEffect(() => () => URL.revokeObjectURL(mediaUrl), [mediaUrl]);
 
   const pickFile = (selected) => {
     if (!selected) return;
-    if (selected.size > 100 * 1024 * 1024) {
-      toast.error("Maksymalnie 100 MB (wideo) / 10 MB (zdjęcie)");
+    const imageTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/avif",
+    ];
+    const videoTypes = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ];
+
+    const isImage = imageTypes.includes(selected.type);
+    const isVideo = videoTypes.includes(selected.type);
+
+    if (!isImage && !isVideo) {
+      toast.error("Obsługiwane formaty: JPG, PNG, WEBP, GIF, AVIF, MP4, WEBM i MOV");
+      return;
+    }
+
+    const limit = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (selected.size <= 0 || selected.size > limit) {
+      toast.error(isVideo
+        ? "Wideo musi mieć rozmiar do 100 MB"
+        : "Zdjęcie musi mieć rozmiar do 10 MB");
       return;
     }
     setFile(selected);
@@ -56,16 +75,84 @@ export default function StoryComposer({ onClose, onPublished }) {
     setPublishing(true);
     try {
       setUploading(true);
-      const up = await base44.integrations.Core.UploadPublicFile({ file });
+      let uploadFile = file;
+
+      if (mediaType === "image") {
+        const image = imageRef.current;
+
+        if (!image) {
+          throw new Error("Nie znaleziono zdjęcia do eksportu.");
+        }
+
+        if (typeof image.decode === "function") {
+          await image.decode();
+        } else if (!image.complete) {
+          await new Promise((resolve, reject) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener(
+              "error",
+              () => reject(new Error("Nie udało się wczytać zdjęcia.")),
+              { once: true }
+            );
+          });
+        }
+
+        if (!image.complete || !image.naturalWidth || !image.naturalHeight) {
+          throw new Error("Zdjęcie jest uszkodzone lub nie zostało poprawnie wczytane.");
+        }
+
+        const blob = await exportStudioImage(image, {
+          format: "story",
+          filter,
+          text: overlay.trim(),
+          textOptions: {
+            position: overlayPos,
+            fontSize: 48,
+            fontWeight: 700,
+            align: "center",
+            color: "#ffffff",
+            background: true,
+            backgroundColor: "rgba(0,0,0,0.35)",
+          },
+          type: "image/jpeg",
+          quality: 0.92,
+        });
+
+        if (typeof File === "undefined") {
+          throw new Error("Ta przeglądarka nie obsługuje przygotowania pliku wynikowego.");
+        }
+
+        const baseName = (file.name || "story").replace(/\.[^.]+$/, "");
+        uploadFile = new File(
+          [blob],
+          `${baseName || "story"}-purre-studio.jpg`,
+          { type: "image/jpeg", lastModified: Date.now() }
+        );
+      }
+
+      const up = await base44.integrations.Core.UploadPublicFile({
+        file: uploadFile,
+      });
+      const uploadedUrl = up?.file_url || up?.url;
+
+      if (typeof uploadedUrl !== "string" || !uploadedUrl.trim()) {
+        throw new Error("Serwer nie zwrócił adresu przesłanego pliku");
+      }
+
       setUploading(false);
       await storiesApi.create({
-        media_url: up.file_url,
+        media_url: uploadedUrl.trim(),
         media_type: mediaType,
         caption: caption.trim() || null,
         music_title: track ? `${track.title}${track.artist ? ` — ${track.artist}` : ""}` : null,
         music_url: track?.url ?? null,
-        filter: filter !== "none" ? filter : null,
-        overlay_text: overlay.trim() || null,
+        // Efekty zdjęć są już wypalone w eksporcie Canvas.
+        // Dla wideo zachowujemy dotychczasowe metadane.
+        filter: mediaType === "image" ? null : (filter !== "none" ? filter : null),
+        overlay_text: mediaType === "image" ? null : (overlay.trim() || null),
+        overlay_position: mediaType === "image"
+          ? null
+          : (overlay.trim() ? overlayPos : null),
       });
       toast.success("Relacja opublikowana — zniknie po 24 h");
       onPublished?.();
@@ -90,12 +177,12 @@ export default function StoryComposer({ onClose, onPublished }) {
       <div className="flex min-h-0 flex-1 gap-3 px-4 pb-4 lg:flex-row lg:px-8">
         {/* Podgląd 9:16 */}
         <div className="mx-auto flex w-full max-w-sm flex-1 items-center justify-center lg:mx-0">
-          <div ref={previewRef} className="relative flex h-full max-h-[70vh] w-full items-center justify-center overflow-hidden rounded-3xl bg-zinc-950 ring-1 ring-white/10">
+          <div className="relative flex h-full max-h-[70vh] w-full items-center justify-center overflow-hidden rounded-3xl bg-zinc-950 ring-1 ring-white/10">
             {mediaUrl ? (
               mediaType === "video" ? (
                 <video ref={previewRef} src={mediaUrl} autoPlay loop muted playsInline className="h-full w-full object-cover" style={{ filter: filterCss(filter) }} />
               ) : (
-                <img src={mediaUrl} alt="" className="h-full w-full object-cover" style={{ filter: filterCss(filter) }} />
+                <img ref={imageRef} src={mediaUrl} alt="" className="h-full w-full object-cover" style={{ filter: filterCss(filter) }} />
               )
             ) : (
               <button type="button" onClick={() => fileRef.current?.click()} className="grid h-full w-full place-items-center text-center text-[11px] uppercase tracking-[0.2em] text-white/60">
@@ -120,10 +207,20 @@ export default function StoryComposer({ onClose, onPublished }) {
         {/* Panel narzędzi */}
         <div className="no-scrollbar w-full shrink-0 space-y-3 overflow-y-auto rounded-3xl border border-white/10 bg-card/60 p-3 lg:w-96">
           <div className="flex gap-2">
-            <button type="button" onClick={() => fileRef.current?.click()} className="flex-1 rounded-xl border border-white/15 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+            <button type="button" disabled={publishing} onClick={() => fileRef.current?.click()} className="flex-1 rounded-xl border border-white/15 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-50">
               {file ? "Zmień medium" : "Wybierz plik"}
             </button>
-            <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ""; }} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime"
+              className="hidden"
+              disabled={publishing}
+              onChange={(e) => {
+                pickFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
           </div>
 
           <div>
@@ -175,7 +272,7 @@ export default function StoryComposer({ onClose, onPublished }) {
 
           <div>
             <p className="mb-1.5 text-[9px] uppercase tracking-[0.2em] text-white/60">Muzyka</p>
-            <div className="text-foreground [&_.text-muted-foreground]:text-white/60 [&_input]:bg-black/30 [&_input]:text-white [&_li]:text-white [&_p.text-[10px].uppercase]:text-white/60">
+            <div className="text-foreground [&_.text-muted-foreground]:text-white/60 [&_input]:bg-black/30 [&_input]:text-white [&_li]:text-white [&_p.text-\[10px\].uppercase]:text-white/60">
               <SoundPicker value={track} onChange={setTrack} />
             </div>
           </div>

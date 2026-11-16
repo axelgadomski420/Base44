@@ -1,9 +1,10 @@
+import { useAuth } from "@/lib/AuthContext";
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Film } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReelVideo from "@/components/reels/ReelVideo";
-import AdSlot from "@/components/ads/AdSlot";
+import AdSenseUnit from "@/components/ads/AdSenseUnit";
 import { useAds } from "@/hooks/useAds";
 
 export const Route = createFileRoute("/_app/reels")({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/_app/reels")({
 
 function ReelsPage() {
   const navigate = useNavigate();
+  const { isAuthenticated, navigateToLogin } = useAuth();
   const { mix } = useAds();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ function ReelsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const rows = useMemo(() => mix(posts, "reels"), [mix, posts]);
+  const rows = useMemo(() => mix(posts, "reels", "reels"), [mix, posts]);
 
   return (
     <div className="relative h-[calc(100dvh-96px)] w-full bg-black lg:h-screen">
@@ -43,12 +45,13 @@ function ReelsPage() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <p className="font-display text-sm tracking-wide text-white">Holo Reels</p>
-        <Link
-          to="/create"
+        <button
+          type="button"
+          onClick={() => isAuthenticated ? navigate({ to: "/create" }) : navigateToLogin()}
           className="ml-auto rounded-full bg-white/15 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur"
         >
           Dodaj wideo
-        </Link>
+        </button>
       </div>
 
       {loading ? (
@@ -63,12 +66,13 @@ function ReelsPage() {
             <p className="mt-1 text-[11px] text-white/50">
               Dodaj pierwszy film z miotu — pojawi się tutaj w pionowym feedzie.
             </p>
-            <Link
-              to="/create"
-              className="btn-aura mt-4 inline-flex rounded-xl px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
-            >
-              Dodaj wideo
-            </Link>
+            <button
+          type="button"
+          onClick={() => isAuthenticated ? navigate({ to: "/create" }) : navigateToLogin()}
+          className="btn-aura mt-4 inline-flex rounded-xl px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em]"
+        >
+          Dodaj wideo
+        </button>
           </div>
         </div>
       ) : (
@@ -76,10 +80,10 @@ function ReelsPage() {
           {rows.map((row, index) =>
             row.type === "ad" ? (
               <div
-                key={`ad-${row.ad.id}-${index}`}
+                key={row.id}
                 className="flex h-full w-full snap-start items-center justify-center bg-gradient-to-b from-black via-zinc-950 to-black px-6"
               >
-                <AdSlot ad={row.ad} variant="banner" className="w-full max-w-md" />
+                <AdSenseUnit slotName="reels" format="auto" className="w-full max-w-md" />
               </div>
             ) : (
               <div key={row.data.id} className="h-full w-full snap-start">

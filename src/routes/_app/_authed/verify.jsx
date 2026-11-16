@@ -36,11 +36,24 @@ function VerifyPage() {
 
   const upload = async (file) => {
     if (!file) return;
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Dozwolone formaty: PDF, JPG, PNG i WEBP");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("Dokument może mieć maksymalnie 15 MB");
+      return;
+    }
     setFileName(file.name);
+    setForm((current) => ({ ...current, document_url: "" }));
     setBusy(true);
     try {
-      const result = await base44.integrations.Core.UploadPublicFile({ file });
-      setForm((current) => ({ ...current, document_url: result.file_url || result.url || "" }));
+      const result = await base44.integrations.Core.UploadPrivateVerificationDocument({ file });
+      if (!result?.document_url || !result.document_url.startsWith("private-doc:")) {
+        throw new Error("Serwer nie zwrócił identyfikatora prywatnego dokumentu");
+      }
+      setForm((current) => ({ ...current, document_url: result.document_url }));
       toast.success("Dokument wgrany");
     } catch (error) {
       toast.error(error?.message ?? "Nie udało się wgrać dokumentu");

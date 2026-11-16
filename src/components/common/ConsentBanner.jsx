@@ -22,7 +22,7 @@ export default function ConsentBanner() {
   const decide = (value) => {
     try {
       localStorage.setItem(KEY, value);
-    } catch {}
+    } catch { /* Brak dostępu do localStorage nie blokuje decyzji użytkownika. */ }
     setVisible(false);
   };
 

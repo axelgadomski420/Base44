@@ -2,10 +2,11 @@ import { Router } from "express";
 import { prisma } from "../prisma.js";
 import { requireAuth, isAdmin, isModerator } from "../lib/auth.js";
 import { asyncHandler, badRequest, forbidden, notFound } from "../lib/errors.js";
-import { ollamaGenerate, ollamaHealth } from "../lib/ollama.js";
+import { ollamaHealth } from "../lib/ollama.js";
 import { notify } from "./notifications.routes.js";
 import { isPremium } from "./premium.routes.js";
 import { config } from "../config.js";
+import { getPrivateVerificationDocument } from "../lib/private-verification-documents.js";
 
 export const adminRouter = Router();
 
@@ -20,12 +21,42 @@ function requireModerator(req, _res, next) {
   return next();
 }
 
-adminRouter.use(requireAuth, requireModerator);
+async function loadCurrentAdminUser(req, _res, next) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user?.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        banned: true,
+        full_name: true,
+      },
+    });
+
+    if (!user) return next(forbidden("Konto nie istnieje"));
+    if (user.banned) return next(forbidden("Konto jest zablokowane"));
+
+    req.user = { ...req.user, ...user, sub: user.id };
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+function requireMainAdmin(req, _res, next) {
+  if (!isAdminAccount(req)) {
+    return next(forbidden("Ta funkcja jest dostępna wyłącznie dla administratora głównego"));
+  }
+  return next();
+}
+
+adminRouter.use(requireAuth, loadCurrentAdminUser, requireModerator);
 
 // GET /api/admin/overview — statystyki na żywo + kolejki.
 adminRouter.get(
   "/overview",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const [verifications, listings, posts, users, events, reels, transactions, reports, comments, bannedCount, premiumCount, stories, health] = await Promise.all([
       prisma.verificationRequest.findMany({ where: { status: "pending" }, orderBy: { created_date: "asc" }, take: 40 }),
       prisma.listing.findMany({ where: { status: "review" }, orderBy: { created_date: "asc" }, take: 40 }),
@@ -44,8 +75,11 @@ adminRouter.get(
     res.json({
       verifications, listings, posts, reports,
       stats: {
-        users, events, reels, transactions, comments, banned: bannedCount, premium: premiumCount, active_stories: stories,
+        users, events, reels, comments, active_stories: stories,
         pending: verifications.length + listings.length + posts.length + reports.length,
+        ...(isAdminAccount(req)
+          ? { transactions, banned: bannedCount, premium: premiumCount }
+          : {}),
       },
       ollama: health,
     });
@@ -55,6 +89,7 @@ adminRouter.get(
 // GET /api/admin/users?q= — zarządzanie użytkownikami.
 adminRouter.get(
   "/users",
+  requireMainAdmin,
   asyncHandler(async (req, res) => {
     const q = (typeof req.query.q === "string" ? req.query.q : "").trim();
     const users = await prisma.user.findMany({
@@ -131,37 +166,39 @@ adminRouter.patch(
   })
 );
 
-// POST /api/admin/verification/:id/analyze — analiza wniosku przez lokalny LLM (Ollama).
-adminRouter.post(
-  "/verification/:id/analyze",
-  asyncHandler(async (req, res) => {
-    const request = await prisma.verificationRequest.findUnique({ where: { id: req.params.id } });
-    if (!request) throw notFound("Nie znaleziono wniosku");
-    const profile = await prisma.profile.findFirst({ where: { user_id: request.user_id } });
-    const prompt = `Przeanalizuj wniosek weryfikacji hodowcy i oceń wiarygodność.
-Nazwa hodowli: ${request.kennel_name}
-Nr rejestru: ${request.registry_no || "brak"}
-Miasto: ${request.city || "brak"}; Gatunek: ${request.species || "brak"}
-Opis: ${request.note || "brak"}; Dokument: ${request.document_url || "brak"}
-Profil: bio=${profile?.bio || "brak"}, obserwujący=${profile?.followers ?? 0}
 
-Odpowiedz WYŁĄCZNIE JSON: {"score": <0-100>, "recommendation": "<approve|reject|manual>", "reasoning": "<2-3 zdania po polsku>", "missing": ["<braki>"]}`;
-    const result = await ollamaGenerate(prompt, { timeoutMs: 90000 });
-    let parsed = null;
-    if (result.ok) {
-      const match = result.text.match(/\{[\s\S]*\}/);
-      if (match) { try { parsed = JSON.parse(match[0]); } catch { parsed = null; } }
-    }
-    const updated = await prisma.verificationRequest.update({
-      where: { id: request.id },
-      data: {
-        ai_recommendation: parsed?.recommendation ?? "manual",
-        ai_score: typeof parsed?.score === "number" ? Math.max(0, Math.min(100, parsed.score)) : null,
-        ai_reasoning: (parsed?.reasoning ?? (result.ok ? result.text.slice(0, 1000) : "Analiza LLM niedostępna")).slice(0, 1000),
-        ai_analyzed_at: new Date(),
-      },
+
+// GET /api/admin/verification/:id/document — bezpieczny podgląd
+// dokumentu prywatnego. Dostęp wyłącznie dla moderatora/admina.
+adminRouter.get(
+  "/verification/:id/document",
+  asyncHandler(async (req, res) => {
+    const request = await prisma.verificationRequest.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, user_id: true, document_url: true },
     });
-    res.json({ request: updated, llm_ok: result.ok });
+
+    if (!request) throw notFound("Nie znaleziono wniosku");
+    if (!request.document_url) throw notFound("Wniosek nie zawiera dokumentu");
+
+    let document;
+    try {
+      document = await getPrivateVerificationDocument(
+        request.document_url,
+        request.user_id
+      );
+    } catch {
+      throw forbidden("Nie można uzyskać dostępu do dokumentu");
+    }
+
+    res.setHeader("Content-Type", document.metadata.mimeType);
+    res.setHeader("Content-Disposition",
+      `inline; filename*=UTF-8''${encodeURIComponent(document.metadata.filename || "dokument")}`
+    );
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    return res.sendFile(document.filePath);
   })
 );
 
@@ -267,6 +304,7 @@ adminRouter.post(
 // GET /api/admin/premium — lista subskrypcji Premium.
 adminRouter.get(
   "/premium",
+  requireMainAdmin,
   asyncHandler(async (_req, res) => {
     const users = await prisma.user.findMany({
       where: { OR: [{ is_premium: true }, { premium_until: { gt: new Date() } }] },

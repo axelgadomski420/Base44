@@ -94,7 +94,7 @@ export function createApp() {
     try {
       await prisma.$queryRaw`SELECT 1`;
       db = "up";
-    } catch {}
+    } catch { /* Status bazy pozostaje oznaczony jako down. */ }
     res.json({ ok: true, db, now: new Date().toISOString() });
   });
 

@@ -21,7 +21,7 @@ export function RodoBanner() {
   const handleAccept = (value) => {
     try {
       localStorage.setItem(KEY, value);
-    } catch {}
+    } catch { /* Brak dostępu do localStorage nie blokuje UI. */ }
     setAccepted(true);
   };
 

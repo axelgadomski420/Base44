@@ -50,6 +50,6 @@ export function isAdmin(req) {
 }
 
 export function isModerator(req) {
-  const role = req.user?.role;
+  const role = String(req.user?.role || "").trim().toLowerCase();
   return role === "admin" || role === "moderator";
 }

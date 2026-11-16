@@ -121,7 +121,7 @@ export const DAILY_TARGETS = {
   bubble: 600,
 };
 
-export const DAILY_BONUS = 120;
+export const DAILY_BONUS = 20;
 
 export const GAME_IDS = GAMES.map((g) => g.id);
 

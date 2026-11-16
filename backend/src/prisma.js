@@ -19,19 +19,3 @@ export const prisma = new PrismaClient({
 
 // Wyraźny komunikat przy błędach uprawnień PostgreSQL (SQLSTATE 42501) —
 // zamiast surowego "permission denied for schema public" operator dostaje instrukcję naprawy.
-prisma.$use(async (params, next) => {
-  try {
-    return await next(params);
-  } catch (err) {
-    if (err?.code === "P2025") throw err;
-    const msg = String(err?.message ?? "");
-    if (msg.includes("42501") || msg.includes("permission denied")) {
-      console.error(
-        "[prisma] Błąd uprawnień bazy (42501). Uruchom na serwerze:\n" +
-          "  sudo -u postgres psql -d purrepets -f backend/scripts/fix-db-perms.sql\n" +
-          "i upewnij się, że DATABASE_URL wskazuje użytkownika właściciela schematu public."
-      );
-    }
-    throw err;
-  }
-});

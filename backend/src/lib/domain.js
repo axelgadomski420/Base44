@@ -46,7 +46,7 @@ export const DAILY_TARGETS = {
   wordle: 1,
   bubble: 600,
 };
-export const DAILY_BONUS = 120;
+export const DAILY_BONUS = 20;
 
 export function dailyGame(dateStr) {
   const seed = dateStr.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -65,8 +65,12 @@ export function dailyTarget(gameId) {
 }
 
 export function coinReward(game, score) {
-  const divisor = GAME_DIVISOR[game] ?? 10;
-  return Math.min(200, Math.max(5, Math.round(score / divisor)));
+  const cap = GAME_CAPS[game];
+  if (!cap || !Number.isFinite(score) || score <= 0) return 0;
+
+  // 8-12 Coins za dodatni, zaakceptowany wynik.
+  const performance = Math.min(1, score / cap);
+  return 8 + Math.round(performance * 4);
 }
 
 export function levelFor(xp = 0) {

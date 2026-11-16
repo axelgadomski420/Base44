@@ -14,9 +14,14 @@ const patchSchema = z.object({
   city: z.string().trim().max(80).optional(),
   avatar_url: z.string().trim().max(500).optional(),
   cover_url: z.string().trim().max(500).optional(),
+  gallery_urls: z.array(z.string().trim().min(1).max(500)).max(12).optional(),
   species: z.array(z.string().trim().max(40)).max(10).optional(),
   breeds: z.array(z.string().trim().max(80)).max(20).optional(),
   account_type: z.enum(["breeder", "enthusiast"]).optional(),
+
+  website_url: z.string().max(500).nullable().optional(),
+  instagram_url: z.string().max(500).nullable().optional(),
+  tiktok_url: z.string().max(500).nullable().optional(),
 });
 
 profileRouter.use(requireAuth);
@@ -55,6 +60,10 @@ profileRouter.patch(
       ...(data.city !== undefined ? { city: data.city } : {}),
       ...(data.avatar_url !== undefined ? { avatar_url: data.avatar_url } : {}),
       ...(data.cover_url !== undefined ? { cover_url: data.cover_url } : {}),
+      ...(data.gallery_urls !== undefined ? { gallery_urls: data.gallery_urls } : {}),
+      ...(data.website_url !== undefined ? { website_url: data.website_url } : {}),
+      ...(data.instagram_url !== undefined ? { instagram_url: data.instagram_url } : {}),
+      ...(data.tiktok_url !== undefined ? { tiktok_url: data.tiktok_url } : {}),
       ...(data.species !== undefined ? { species: data.species } : {}),
       ...(data.breeds !== undefined ? { breeds: data.breeds } : {}),
       ...(data.account_type !== undefined ? { account_type: data.account_type } : {}),

@@ -42,7 +42,7 @@ export default function NotificationBell() {
     let token = null;
     try {
       token = localStorage.getItem(TOKEN_KEY);
-    } catch {}
+    } catch { /* Powiadomienia pozostają niedostępne bez tokenu. */ }
     if (!token) return undefined;
     const socket = io(base44.socketUrl ?? window.location.origin, {
       path: "/socket.io",

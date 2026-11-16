@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { AuthGateError, requireSignedIn } from "@/components/auth/AuthGate";
 import { toast } from "sonner";
 import TopBar from "@/components/layout/TopBar";
 import { base44 } from "@/api/base44Client";
@@ -7,6 +8,9 @@ import { useAuth } from "@/lib/AuthContext";
 import { formatNumber } from "@/lib/format";
 
 export const Route = createFileRoute("/_app/community/")({
+  ssr: false,
+  beforeLoad: requireSignedIn,
+  errorComponent: AuthGateError,
   head: () => ({ meta: [{ title: "PURRE PETS — Społeczność" }] }),
   component: CommunityPage,
 });

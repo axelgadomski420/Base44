@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../prisma.js";
-import { optionalAuth, requireAuth } from "../lib/auth.js";
+import { requireAuth } from "../lib/auth.js";
 import { asyncHandler, badRequest, notFound } from "../lib/errors.js";
 import { notify } from "./notifications.routes.js";
 
@@ -12,7 +12,10 @@ const createSchema = z.object({
   media_type: z.enum(["image", "video"]).default("image"),
   caption: z.string().trim().max(300).optional(),
   music_title: z.string().trim().max(120).optional(),
-  music_url: z.string().trim().max(500).optional(),
+  music_url: z.string().trim().max(500).nullable().optional(),
+  filter: z.enum(["warm", "cool", "mono", "vivid", "fade", "drama"]).nullable().optional(),
+  overlay_text: z.string().trim().max(80).nullable().optional(),
+  overlay_position: z.enum(["top", "center", "bottom"]).nullable().optional(),
 });
 
 // POST /api/stories — publikacja relacji (wygasa po 24 h).
@@ -32,6 +35,9 @@ storiesRouter.post(
         caption: data.caption ?? null,
         music_title: data.music_title ?? null,
         music_url: data.music_url ?? null,
+        filter: data.filter ?? null,
+        overlay_text: data.overlay_text ?? null,
+        overlay_position: data.overlay_position ?? null,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
         created_by_id: req.user.id,
       },
@@ -40,30 +46,66 @@ storiesRouter.post(
   })
 );
 
-// GET /api/stories — aktywne relacje (grupowane per autor, jak w Messengerze/IG).
+// GET /api/stories — aktywne relacje, grupowane i sortowane per autor.
 storiesRouter.get(
   "/",
-  optionalAuth,
+  requireAuth,
   asyncHandler(async (_req, res) => {
-    await prisma.story.deleteMany({ where: { expires_at: { lt: new Date() } } }); // auto-cleanup
+    const now = new Date();
+
+    // Sprzątanie wygasłych relacji.
+    await prisma.story.deleteMany({
+      where: { expires_at: { lt: now } },
+    });
+
+    // Najnowsze relacje są pobierane jako pierwsze.
     const stories = await prisma.story.findMany({
-      where: { expires_at: { gt: new Date() } },
-      orderBy: { created_date: "desc" },
+      where: { expires_at: { gt: now } },
+      orderBy: [
+        { created_date: "desc" },
+        { id: "desc" },
+      ],
       take: 200,
     });
+
     const byAuthor = new Map();
-    for (const s of stories) {
-      if (!byAuthor.has(s.author_id)) byAuthor.set(s.author_id, []);
-      byAuthor.get(s.author_id).push(s);
+
+    for (const story of stories) {
+      if (!byAuthor.has(story.author_id)) {
+        byAuthor.set(story.author_id, []);
+      }
+
+      byAuthor.get(story.author_id).push(story);
     }
-    const groups = [...byAuthor.entries()].map(([author_id, items]) => ({
-      author_id,
-      author_name: items[0].author_name,
-      author_avatar: items[0].author_avatar,
-      stories: items,
-      latest: items[0].created_date,
-    }));
-    res.json({ groups, total: stories.length });
+
+    const groups = [...byAuthor.entries()].map(([author_id, items]) => {
+      // Jawne sortowanie relacji wewnątrz konta.
+      items.sort(
+        (a, b) =>
+          new Date(b.created_date).getTime() -
+          new Date(a.created_date).getTime()
+      );
+
+      return {
+        author_id,
+        author_name: items[0].author_name,
+        author_avatar: items[0].author_avatar,
+        stories: items,
+        latest: items[0].created_date,
+      };
+    });
+
+    // Najaktywniejsze/najnowsze konto pojawia się pierwsze.
+    groups.sort(
+      (a, b) =>
+        new Date(b.latest).getTime() -
+        new Date(a.latest).getTime()
+    );
+
+    res.json({
+      groups,
+      total: stories.length,
+    });
   })
 );
 

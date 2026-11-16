@@ -1,4 +1,6 @@
 import { useState } from "react";
+import PhotoStudioEditor from "@/components/studio/PhotoStudioEditor";
+import { exportStudioImage, STUDIO_FORMATS } from "@/lib/purre-studio";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -7,6 +9,7 @@ import {
   Film,
   ImagePlus,
   Loader2,
+  X,
   PawPrint,
   ShieldAlert,
   Store,
@@ -72,6 +75,9 @@ function CreatePage() {
   const [tab, setTab] = useState(null);
   const [busy, setBusy] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [imageUrls, setImageUrls] = useState([]);
+  const [postDrafts, setPostDrafts] = useState([]);
+  const [editingPhotoIndex, setEditingPhotoIndex] = useState(null);
   const [videoUrl, setVideoUrl] = useState("");
   const [kind, setKind] = useState("sale");
   const [form, setForm] = useState({
@@ -92,16 +98,85 @@ function CreatePage() {
   const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
   const upload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+
+    const isPost = tab === "post";
+    const videos = files.filter((file) => file.type.startsWith("video/"));
+    const images = files.filter((file) => file.type.startsWith("image/"));
+
+    if (files.some((file) => !file.type.startsWith("image/") && !file.type.startsWith("video/"))) {
+      toast.error("Dozwolone są tylko zdjęcia i filmy");
+      return;
+    }
+
+    if (videos.length && (videos.length !== 1 || files.length !== 1)) {
+      toast.error("Film dodaj osobno, bez zdjęć");
+      return;
+    }
+
+    if (isPost && images.length) {
+      if (files.length !== images.length) {
+        toast.error("Nie można łączyć zdjęć i filmu w jednym poście");
+        return;
+      }
+      if (postDrafts.length + images.length > 10) {
+        toast.error("Post może zawierać maksymalnie 10 zdjęć");
+        return;
+      }
+      if (images.some((file) => file.type === "image/gif")) {
+        toast.error("Animowane GIF nie są jeszcze obsługiwane przez eksport Studio. Wybierz JPEG, PNG, WebP lub AVIF.");
+        return;
+      }
+      const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+      if (images.some((file) => !allowed.has(file.type))) {
+        toast.error("Obsługiwane zdjęcia: JPEG, PNG, WebP i AVIF");
+        return;
+      }
+      if (images.some((file) => file.size <= 0 || file.size > 10 * 1024 * 1024)) {
+        toast.error("Każde zdjęcie musi mieć maksymalnie 10 MB");
+        return;
+      }
+
+      const drafts = images.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        edits: {},
+      }));
+
+      setPostDrafts((previous) => [...previous, ...drafts]);
+      setVideoUrl("");
+      setImageUrl("");
+      setImageUrls([]);
+      toast.success(drafts.length === 1 ? "Zdjęcie dodane do Studio" : `Dodano ${drafts.length} zdjęć do Studio`);
+      return;
+    }
+
     setBusy(true);
+    let uploadedCount = 0;
     try {
-      const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
-      if (file.type.startsWith("video/")) setVideoUrl(file_url);
-      else setImageUrl(file_url);
-      toast.success("Plik wgrany");
+      for (const file of files) {
+        const { file_url } = await base44.integrations.Core.UploadPublicFile({ file });
+        if (!file_url) throw new Error("Serwer nie zwrócił adresu przesłanego pliku");
+
+        if (file.type.startsWith("video/")) {
+          setVideoUrl(file_url);
+          setImageUrl("");
+          setImageUrls([]);
+          setPostDrafts((previous) => {
+            previous.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+            return [];
+          });
+        } else {
+          setImageUrl(file_url);
+        }
+        uploadedCount += 1;
+      }
+      toast.success(uploadedCount === 1 ? "Plik wgrany" : `Wgrano ${uploadedCount} plików`);
     } catch (error) {
-      toast.error(error?.message ?? "Upload nie powiodl sie");
+      toast.error(error?.message ?? "Upload nie powiódł się");
     } finally {
       setBusy(false);
     }
@@ -162,6 +237,67 @@ function CreatePage() {
       }
 
       if (tab === "post") {
+        let publishedImageUrls = imageUrls;
+
+        if (!videoUrl && postDrafts.length) {
+          publishedImageUrls = [];
+
+          for (const draft of postDrafts) {
+            const image = new window.Image();
+            image.decoding = "async";
+            image.src = draft.previewUrl;
+
+            if (typeof image.decode === "function") {
+              await image.decode();
+            } else {
+              await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = () => reject(new Error("Nie udało się odczytać zdjęcia."));
+              });
+            }
+
+            const edits = draft.edits || {};
+            const selectedFormat = STUDIO_FORMATS[edits.format] || STUDIO_FORMATS.square;
+            const exportWidth = 1080;
+            const exportHeight = Math.round(
+              exportWidth * selectedFormat.height / selectedFormat.width
+            );
+
+            const blob = await exportStudioImage(image, {
+              ...edits,
+              format: edits.format || "square",
+              width: exportWidth,
+              height: exportHeight,
+              text: edits.text || "",
+              textOptions: {
+                position: edits.textPosition || "bottom",
+                fontSize: 52,
+                fontWeight: 700,
+                align: "center",
+                color: "#ffffff",
+                background: true,
+                backgroundColor: "rgba(0,0,0,0.38)",
+              },
+              type: "image/jpeg",
+              quality: 0.92,
+            });
+
+            const baseName = draft.file.name.replace(/\.[^.]+$/, "") || "purre-photo";
+            const processedFile = new File(
+              [blob],
+              `${baseName}-purre-studio.jpg`,
+              { type: "image/jpeg", lastModified: Date.now() }
+            );
+
+            const response = await base44.integrations.Core.UploadPublicFile({
+              file: processedFile,
+            });
+            const url = response?.file_url || response?.url;
+            if (!url) throw new Error("Nie udało się przesłać przetworzonego zdjęcia.");
+            publishedImageUrls.push(url);
+          }
+        }
+
         await base44.entities.Post.create({
           author_id: user.id,
           author_name: currentProfile?.kennel_name || currentProfile?.display_name || user.full_name,
@@ -171,7 +307,8 @@ function CreatePage() {
           city: form.city,
           breed: form.breed,
           caption: form.postCaption,
-          image_url: videoUrl ? "" : imageUrl,
+          image_url: videoUrl ? "" : (publishedImageUrls[0] || imageUrl),
+          image_urls: videoUrl ? [] : (publishedImageUrls.length ? publishedImageUrls : (imageUrl ? [imageUrl] : [])),
           video_url: videoUrl,
           tags: form.breed ? [form.breed.toLowerCase()] : [],
           likes: 0,
@@ -308,17 +445,93 @@ function CreatePage() {
                   <input
                     type="file"
                     accept={tab === "post" ? "image/*,video/*" : "image/*"}
+                    multiple={tab === "post"}
                     className="sr-only"
                     onChange={upload}
                   />
                 </label>
-                {(imageUrl || videoUrl) && (
+                {videoUrl && (
                   <div className="overflow-hidden rounded-xl border border-border/50">
-                    {videoUrl ? (
-                      <video src={videoUrl} className="max-h-48 w-full object-cover" controls />
-                    ) : (
-                      <Image src={imageUrl} alt="" className="max-h-48 w-full object-cover" />
-                    )}
+                    <video src={videoUrl} className="max-h-64 w-full object-contain" controls />
+                  </div>
+                )}
+
+                {!videoUrl && tab === "post" && postDrafts.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">Zdjęcia w Studio</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {postDrafts.length}/10 · efekty zostaną zapisane w pliku
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {postDrafts.map((draft, index) => (
+                        <div key={draft.id} className="relative overflow-hidden rounded-xl border border-border/50">
+                          <img
+                            src={draft.previewUrl}
+                            alt={`Zdjęcie posta ${index + 1}`}
+                            className="aspect-square w-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-black/75 p-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setEditingPhotoIndex(index)}
+                              className="rounded-lg bg-white/15 px-2 py-1.5 text-[10px] font-semibold text-white"
+                            >
+                              Edytuj
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                URL.revokeObjectURL(draft.previewUrl);
+                                setPostDrafts((previous) => previous.filter((item) => item.id !== draft.id));
+                                if (editingPhotoIndex === index) setEditingPhotoIndex(null);
+                              }}
+                              className="rounded-lg bg-red-500/80 px-2 py-1.5 text-[10px] font-semibold text-white"
+                            >
+                              Usuń
+                            </button>
+                          </div>
+                          {index === 0 && (
+                            <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] text-white">
+                              Okładka
+                            </span>
+                          )}
+                          {draft.edits?.filter && draft.edits.filter !== "none" && (
+                            <span className="absolute right-2 top-2 rounded-full bg-aura/90 px-2 py-1 text-[9px] text-white">
+                              Studio
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {editingPhotoIndex !== null && postDrafts[editingPhotoIndex] && (
+                  <PhotoStudioEditor
+                    file={postDrafts[editingPhotoIndex].file}
+                    previewUrl={postDrafts[editingPhotoIndex].previewUrl}
+                    initialSettings={postDrafts[editingPhotoIndex].edits}
+                    onCancel={() => setEditingPhotoIndex(null)}
+                    onSave={(edits) => {
+                      const editingId = postDrafts[editingPhotoIndex].id;
+                      setPostDrafts((previous) =>
+                        previous.map((item) =>
+                          item.id === editingId ? { ...item, edits } : item
+                        )
+                      );
+                      setEditingPhotoIndex(null);
+                      toast.success("Zapisano ustawienia zdjęcia");
+                    }}
+                  />
+                )}
+
+                {!videoUrl && tab !== "post" && imageUrl && (
+                  <div className="overflow-hidden rounded-xl border border-border/50">
+                    <Image src={imageUrl} alt="" className="max-h-48 w-full object-cover" />
                   </div>
                 )}
 

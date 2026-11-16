@@ -5,7 +5,7 @@ import TopBar from "@/components/layout/TopBar";
 import { StoriesBar } from "@/components/stories/StoriesBar";
 import PostCard from "@/components/feed/PostCard";
 import DiscoverRail from "@/components/discover/DiscoverRail";
-import AdSlot from "@/components/ads/AdSlot";
+import AdSenseUnit from "@/components/ads/AdSenseUnit";
 import { useAds } from "@/hooks/useAds";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
@@ -73,7 +73,7 @@ function DiscoverPage() {
   }, [isDemo, posts, tab, followingIds]);
 
   // Reklamy wplecione w feed (co kilka postów) — PREMIUM ich nie widzi.
-  const feedRows = useMemo(() => mix(visiblePosts, "feed"), [mix, visiblePosts]);
+  const feedRows = useMemo(() => mix(visiblePosts, "feed", "feed"), [mix, visiblePosts]);
 
   const storyBreeders = breeders.length
     ? breeders.map((profile) => ({
@@ -140,7 +140,11 @@ function DiscoverPage() {
               { to: "/community", label: "Społeczność", icon: Users },
               { to: "/video-editor", label: "Edytor", icon: Film },
               { to: "/verify", label: "Weryfikacja", icon: ShieldCheck },
-            ].map((item) => (
+            ]
+              .filter((item) =>
+                isAuthenticated || !["/events", "/community"].includes(item.to)
+              )
+              .map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
@@ -178,7 +182,7 @@ function DiscoverPage() {
             <div className="space-y-5">
               {feedRows.map((row, index) =>
                 row?.type === "ad" ? (
-                  <AdSlot key={`ad-${row.ad?.id ?? index}`} ad={row.ad} variant="feed" />
+                  <AdSenseUnit key={row.id} slotName="feed" format="auto" className="w-full" />
                 ) : (
                   <PostCard key={row?.data?.id ?? index} post={row?.data} demo={isDemo} />
                 )

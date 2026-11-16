@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { AuthGateError, requireSignedIn } from "@/components/auth/AuthGate";
 import { CalendarDays, MapPin, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import TopBar from "@/components/layout/TopBar";
@@ -8,6 +9,9 @@ import { useAuth } from "@/lib/AuthContext";
 import { CITY_NAMES } from "@/lib/geo";
 
 export const Route = createFileRoute("/_app/events/")({
+  ssr: false,
+  beforeLoad: requireSignedIn,
+  errorComponent: AuthGateError,
   head: () => ({ meta: [{ title: "PURRE PETS — Wydarzenia" }] }),
   component: EventsPage,
 });

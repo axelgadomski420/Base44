@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Coins, Crown, Flame, Gift, Trophy } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
-import AdSlot from "@/components/ads/AdSlot";
+import AdSenseUnit from "@/components/ads/AdSenseUnit";
 import { base44 } from "@/api/base44Client";
 import { useWallet } from "@/lib/useWallet";
-import { useAds } from "@/hooks/useAds";
 import { useI18n } from "@/lib/i18n";
 import { GAMES, dailyGame, dailyTarget, todayKey, DAILY_BONUS } from "@/lib/games";
 import { formatNumber } from "@/lib/format";
@@ -24,13 +23,10 @@ export const Route = createFileRoute("/_app/arcade/")({
 function ArcadePage() {
   const { t } = useI18n();
   const { coins, xp, level, wallet } = useWallet();
-  const { randomAd } = useAds();
   const [leaders, setLeaders] = useState([]);
   const daily = dailyGame(todayKey());
   const target = dailyTarget(daily);
   const dailyGameMeta = GAMES.find((game) => game.id === daily);
-  const adTop = useMemo(() => randomAd(), [randomAd]);
-  const adBottom = useMemo(() => randomAd(), [randomAd]);
 
   useEffect(() => {
     base44.entities.GameScore.filter({}, { sort: "-score", limit: 8 }).then((page) =>
@@ -71,7 +67,7 @@ function ArcadePage() {
           </div>
         </div>
 
-        {adTop && <AdSlot ad={adTop} variant="banner" className="mt-6" />}
+        <AdSenseUnit slotName="arcade" format="auto" className="mt-6" />
 
         <section className="mt-5 rounded-[var(--radius)] border border-aura/30 bg-gradient-to-br from-aura/15 via-card/70 to-violet/10 p-4">
           <div className="flex items-center gap-2">
@@ -123,7 +119,7 @@ function ArcadePage() {
           </div>
         </section>
 
-        {adBottom && <AdSlot ad={adBottom} variant="banner" className="mt-6" />}
+        <AdSenseUnit slotName="arcade" format="auto" className="mt-6" />
 
         <section className="mt-6 rounded-[var(--radius)] border border-border/70 bg-card/60 p-4">
           <div className="flex items-center gap-2">

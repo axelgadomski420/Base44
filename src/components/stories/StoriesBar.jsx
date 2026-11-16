@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { base44, storiesApi } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
+import { usePremium } from "@/components/ads/AdSlot";
+import AdSenseUnit from "@/components/ads/AdSenseUnit";
+import { getAdSenseSlot, isAdSenseEnabled } from "@/lib/adsense";
 import { Plus, Send, X } from "lucide-react";
 import { toast } from "sonner";
-import { storiesApi } from "@/api/base44Client";
 import StoryComposer, { filterCss } from "@/components/stories/StoryComposer";
 import { cn } from "@/lib/utils";
 
@@ -10,14 +14,84 @@ import { cn } from "@/lib/utils";
  * automatycznym przejściem, reakcjami, filtrami, nakładką i muzyką.
  */
 export function StoriesBar({ onOpen }) {
+  const { user, isAuthenticated } = useAuth();
+  const premium = usePremium();
+
   const [groups, setGroups] = useState([]);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
 
-  const reload = () => storiesApi.list().then((r) => setGroups(r?.groups ?? [])).catch(() => null);
+  const reload = async () => {
+    if (!isAuthenticated || !user?.id) {
+      setGroups([]);
+      return;
+    }
+
+    try {
+      const [storyResult, followResult] = await Promise.all([
+        storiesApi.list(),
+        base44.entities.Follow.filter(
+          { follower_id: user.id },
+          { limit: 500 }
+        ).catch(() => [])
+      ]);
+
+      const allGroups = Array.isArray(storyResult?.groups)
+        ? storyResult.groups
+        : [];
+
+      const followRows = Array.isArray(followResult)
+        ? followResult
+        : Array.isArray(followResult?.items)
+          ? followResult.items
+          : [];
+
+      const followedIds = new Set(
+        followRows
+          .map((follow) => follow?.following_id)
+          .filter(Boolean)
+      );
+
+      // Instagram-like order: own stories, followed accounts,
+      // then all other accounts. Newest groups appear first.
+      const sorted = [...allGroups].sort((a, b) => {
+        const priority = (group) => {
+          if (group.author_id === user.id) return 0;
+          if (followedIds.has(group.author_id)) return 1;
+          return 2;
+        };
+
+        const priorityDifference = priority(a) - priority(b);
+        if (priorityDifference !== 0) return priorityDifference;
+
+        return (
+          new Date(b.latest || b.stories?.[0]?.created_date || 0).getTime() -
+          new Date(a.latest || a.stories?.[0]?.created_date || 0).getTime()
+        );
+      });
+
+      setGroups(sorted);
+    } catch {
+      // Nie czyścimy istniejących relacji przy chwilowym błędzie sieci.
+    }
+  };
 
   useEffect(() => {
     reload();
-  }, []);
+  }, [isAuthenticated, user?.id]);
+
+  if (!isAuthenticated) return null;
+
+  const googleAdsAvailable =
+    isAdSenseEnabled() && Boolean(getAdSenseSlot("feed"));
+
+  const openGroup = (group) => {
+    if (onOpen) {
+      onOpen(group);
+    } else {
+      setSelectedGroup(group);
+    }
+  };
 
   return (
     <>
@@ -30,21 +104,78 @@ export function StoriesBar({ onOpen }) {
           <Plus className="h-5 w-5" />
           <span className="text-[9px] uppercase tracking-wider">Relacja</span>
         </button>
-        {groups.map((g) => (
-          <button
-            key={g.author_id}
-            type="button"
-            onClick={() => onOpen?.(g)}
-            className="relative h-24 w-16 shrink-0 overflow-hidden rounded-2xl ring-2 ring-aura/60"
-          >
-            <img src={g.stories[0]?.media_url} alt="" className="h-full w-full object-cover" style={{ filter: filterCss(g.stories[0]?.filter) }} />
-            <span className="absolute bottom-1 left-1 right-1 truncate text-[9px] font-semibold text-white drop-shadow">
-              {g.author_name}
-            </span>
-          </button>
-        ))}
+
+        {groups.map((group, index) => {
+          const firstStory = group.stories?.[0];
+          const insertAd = (index + 1) % 3 === 0;
+
+          return (
+            <div key={group.author_id} className="contents">
+              <div className="flex w-16 shrink-0 flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => openGroup(group)}
+                  className="relative h-24 w-16 overflow-hidden rounded-2xl ring-2 ring-aura/60"
+                  aria-label={`Otwórz relacje: ${group.author_name}`}
+                >
+                  {firstStory?.media_url ? (
+                    firstStory.media_type === "video" ? (
+                      <video
+                        src={firstStory.media_url}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                        style={{ filter: filterCss(firstStory.filter) }}
+                      />
+                    ) : (
+                      <img
+                        src={firstStory.media_url}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                        style={{ filter: filterCss(firstStory.filter) }}
+                      />
+                    )
+                  ) : (
+                    <div className="h-full w-full bg-secondary" />
+                  )}
+
+                  <span className="absolute bottom-1 left-1 right-1 truncate text-[9px] font-semibold text-white drop-shadow">
+                    {group.author_id === user.id
+                      ? "Twoja relacja"
+                      : group.author_name}
+                  </span>
+                </button>
+              </div>
+
+              {insertAd && googleAdsAvailable && !premium && (
+                <div className="flex w-40 shrink-0 items-center justify-center">
+                  <AdSenseUnit
+                    slotName="feed"
+                    format="auto"
+                    className="w-full min-h-24"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      {composerOpen && <StoryComposer onClose={() => setComposerOpen(false)} onPublished={reload} />}
+
+      {composerOpen && (
+        <StoryComposer
+          onClose={() => setComposerOpen(false)}
+          onPublished={reload}
+        />
+      )}
+
+      {!onOpen && selectedGroup && (
+        <StoryViewer
+          group={selectedGroup}
+          onClose={() => setSelectedGroup(null)}
+        />
+      )}
     </>
   );
 }
