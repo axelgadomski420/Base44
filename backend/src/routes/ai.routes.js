@@ -14,19 +14,78 @@ router.get("/health", async (_req, res) => {
   res.json({ ollama: health.online, model: config.ollamaModel, models: health.models ?? [] });
 });
 
-// POST /api/ai/chat — asystent PURRE (Ollama). Przyjmuje { prompt | message, history }.
-router.post("/chat", async (req, res) => {
+// Limiter (C5): 20 zapytań / 5 min / użytkownik — ochrona lokalnego Ollamy przed nadużyciem.
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 5 * 60 * 1000;
+const rateMap = new Map();
+function rateLimited(userId) {
+  const now = Date.now();
+  if (rateMap.size > 5000) rateMap.clear();
+  const entry = rateMap.get(userId);
+  if (!entry || now - entry.start > RATE_WINDOW_MS) {
+    rateMap.set(userId, { start: now, count: 1 });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_LIMIT;
+}
+
+// POST /api/ai/chat — asystent PURRE (Ollama). Wymaga logowania (pkt P).
+// Przyjmuje { prompt | message, history, pet_id? } — pet_id tylko dla WŁAŚCICIELA zwierzaka.
+router.post("/chat", requireAuth, asyncHandler(async (req, res) => {
   const body = req.body ?? {};
   const prompt = (body.prompt ?? body.message ?? "").toString().trim();
   if (!prompt) return res.status(400).json({ error: "Brak promptu" });
   if (prompt.length > 4000) return res.status(400).json({ error: "Prompt za długi (max 4000 znaków)" });
+  if (rateLimited(req.user.id)) {
+    return res.status(429).json({ error: "Limit zapytań AI (20 na 5 minut). Spróbuj ponownie za chwilę." });
+  }
 
   const history = Array.isArray(body.history)
     ? body.history.slice(-8).map((m) => `${m.role === "user" ? "Użytkownik" : "Asystent"}: ${String(m.text ?? m.content ?? "").slice(0, 500)}`).join("\n")
     : "";
 
-  const system = `Jesteś PURRE Assistant — pomocnym asystentem polskiej społeczności miłośników psów i kotów "PURRE PETS".
-Odpowiadasz ZAWSZE po polsku, zwięźle i konkretnie. Pomagasz w tematach: hodowla, adopcje, bezpieczne kupno zwierzaka, ogłoszenia, PURRE Coins, edytor wideo (rolki) i obsługa aplikacji.`;
+  // Kontekst zwierzęcia — wyłącznie własnego (C2). Zgoda = jawny wybór zwierzaka w panelu.
+  let petContext = "";
+  if (body.pet_id) {
+    try {
+      const pet = await prisma.pet.findUnique({ where: { id: String(body.pet_id).slice(0, 64) } });
+      if (pet && pet.owner_id === req.user.id) {
+        let age = null;
+        if (pet.birth_date) {
+          const months = Math.max(0, Math.floor((Date.now() - new Date(pet.birth_date).getTime()) / (1000 * 60 * 60 * 24 * 30.44)));
+          age = months < 12 ? `${months} mies.` : `${Math.floor(months / 12)} lat`;
+        }
+        petContext = [
+          `Imię: ${pet.name}`,
+          pet.species && `Gatunek: ${pet.species}`,
+          pet.breed && `Rasa: ${pet.breed}`,
+          age && `Wiek: ${age}`,
+          pet.color && `Umaszczenie: ${pet.color}`,
+          pet.bio && `Opis właściciela: ${String(pet.bio).slice(0, 300)}`,
+        ].filter(Boolean).join("; ");
+        petContext = `\n\nKontekst zwierzęcia użytkownika (wybrał je sam): ${petContext}.`;
+      }
+    } catch {
+      // brak kontekstu nie może zabić rozmowy
+    }
+  }
+
+  const system = `Jesteś PURRE Assistant — asystent polskiej społeczności miłośników psów i kotów "PURRE PETS".
+Odpowiadasz ZAWSZE po polsku, zwięźle i konkretnie (max ~900 znaków).
+
+Pomagasz właścicielom: codzienna opieka, żywienie (ogólnie), pielęgnacja, aktywność, zachowanie, podstawowa edukacja,
+przygotowanie do wizyty u weterynarza, organizacja kalendarza i przypomnień, tworzenie opisów postów i ogłoszeń,
+przygotowanie profilu zwierzęcia, obsługa aplikacji (Coins, Studio, Reels, Arcade).
+Pomagasz hodowcom: opisy miotów i ras, organizacja dokumentacji, karty szczeniąt i kociąt, checklisty opieki nad miotem,
+kalendarz terminów hodowlanych, treści edukacyjne, prowadzenie profilu hodowli.
+
+BEZWZGLĘDNE ZAKAZY:
+- Nie podajesz dawek leków ani protokołów leczenia — dawki i terminy ustala wyłącznie weterynarz.
+- Nie potwierdzasz wykonania szczepień ani nie zmieniasz danych medycznych.
+- Nie fałszujesz rodowodów, wyników badań ani certyfikatów.
+- Nie przyznajesz Coins, Premium ani nie zmieniasz ról użytkowników.
+- W sytuacji alarmowej (duszność, drgawki, uraz, zatrucie, brak porodu) KAŻDORAZowo każdz pilny kontakt z weterynarzem.${petContext}`;
 
   const result = await ollamaGenerate(history ? `${history}\nUżytkownik: ${prompt}\nAsystent:` : prompt, { system });
   if (!result.ok) {
@@ -34,7 +93,7 @@ Odpowiadasz ZAWSZE po polsku, zwięźle i konkretnie. Pomagasz w tematach: hodow
     return res.status(503).json({ error: "Model AI jest niedostępny. Spróbuj ponownie za chwilę." });
   }
   res.json({ response: result.text, answer: result.text, model: config.ollamaModel });
-});
+}));
 
 // POST /api/ai/check-document — AI sprawdza dokument (umowa, rodowód, zaświadczenie).
 // Wejście: { text, filename?, kind? } — treść dokumentu (wklejona lub .txt).
